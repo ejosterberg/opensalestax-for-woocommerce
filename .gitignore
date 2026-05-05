@@ -1,0 +1,23 @@
+/vendor/
+/composer.phar
+/composer.lock
+.phpunit.cache/
+.phpunit.result.cache
+.php-cs-fixer.cache
+.phpstan.cache
+/build/
+/coverage/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Local secrets
+.env
+.env.local
+
+# One-off integration test runners (manually invoked on the VM, not shipped)
+/test-cart-simulation.php

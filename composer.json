@@ -1,0 +1,49 @@
+{
+    "name": "ejosterberg/opensalestax-woocommerce",
+    "description": "WooCommerce plugin: replace TaxJar/Avalara with self-hosted OpenSalesTax — destination-based US sales tax at checkout.",
+    "type": "wordpress-plugin",
+    "license": "Apache-2.0",
+    "keywords": ["woocommerce", "wordpress", "tax", "sales-tax", "opensalestax", "us-tax"],
+    "homepage": "https://github.com/ejosterberg/opensalestax-woocommerce",
+    "authors": [
+        {"name": "Eric Osterberg", "email": "ejosterberg@gmail.com"}
+    ],
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../opensalestax-php",
+            "options": {"symlink": true}
+        }
+    ],
+    "require": {
+        "php": ">=8.2",
+        "ejosterberg/opensalestax": "dev-main as 0.1.0"
+    },
+    "require-dev": {
+        "10up/wp_mock": "^1.0",
+        "friendsofphp/php-cs-fixer": "^3.59",
+        "phpstan/phpstan": "^1.11",
+        "phpunit/phpunit": "^9.6"
+    },
+    "autoload": {
+        "psr-4": {"OpenSalesTax\\WooCommerce\\": "src/"}
+    },
+    "autoload-dev": {
+        "psr-4": {"OpenSalesTax\\WooCommerce\\Tests\\": "tests/"}
+    },
+    "scripts": {
+        "test": "phpunit --testsuite=unit",
+        "test-live": "phpunit",
+        "lint": "php-cs-fixer fix --dry-run --diff",
+        "lint-fix": "php-cs-fixer fix",
+        "stan": "phpstan analyse --no-progress"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "composer/installers": true
+        }
+    }
+}

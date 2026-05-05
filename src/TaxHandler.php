@@ -1,0 +1,206 @@
+<?php
+
+// SPDX-License-Identifier: Apache-2.0
+
+declare(strict_types=1);
+
+namespace OpenSalesTax\WooCommerce;
+
+use OpenSalesTax\Address;
+use OpenSalesTax\Exceptions\OpenSalesTaxException;
+use OpenSalesTax\LineItem;
+
+/**
+ * Implements the `woocommerce_calc_tax` filter — replaces WooCommerce's
+ * default tax calculation with a call to the OpenSalesTax engine.
+ *
+ * Strategy: REPLACE (not populate WC's tax-rate tables). Single source of
+ * truth = the engine. We honor `WC()->customer->is_vat_exempt()` ourselves
+ * because the populate-style flow is bypassed.
+ *
+ * Hook timing: priority 10 on `woocommerce_calc_tax`. WC fires this after
+ * shipping methods have evaluated (so destination address is settled) and
+ * after coupons/fees have been applied to the line price.
+ */
+final class TaxHandler
+{
+    public const SYNTHETIC_RATE_ID = 'opensalestax';
+
+    public function __construct(
+        private readonly ClientFactory $clientFactory,
+        private readonly Cache $cache,
+    ) {
+    }
+
+    public function register(): void
+    {
+        add_filter('woocommerce_calc_tax', [$this, 'calcTax'], 10, 4);
+    }
+
+    /**
+     * @param mixed $taxes              WC's default tax array (we ignore it; we replace)
+     * @param mixed $price              Pre-tax line amount in shop currency (assumed USD)
+     * @param mixed $rates              Tax rates WC would have applied; used to detect tax_class
+     * @param mixed $price_includes_tax
+     *
+     * @return array<string, float> [rate_id => tax_amount] OR [] for "no tax this line"
+     */
+    public function calcTax($taxes, $price, $rates, $price_includes_tax): array
+    {
+        $price = is_numeric($price) ? (float) $price : 0.0;
+        if ($price <= 0.0) {
+            return [];
+        }
+
+        if ($this->isCustomerVatExempt()) {
+            return [];
+        }
+
+        $zip5 = $this->resolveDestinationZip();
+        if ($zip5 === null) {
+            return [];
+        }
+
+        $category = $this->resolveCategory(is_array($rates) ? $rates : []);
+        if ($category === null) {
+            // Explicitly non-taxable per WC tax class (zero-rate, etc.)
+            return [];
+        }
+
+        $cents = (int) round($price * 100);
+        $payloadKey = $zip5 . '|' . $category . '|' . $cents;
+
+        $cached = $this->cache->get($payloadKey);
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $client = $this->clientFactory->build();
+        if ($client === null) {
+            // Plugin not configured — return empty (no tax line). The settings
+            // page nags the merchant when base URL is empty, so this is a
+            // benign degraded state, not an error.
+            return [];
+        }
+
+        try {
+            $result = $client->calculate(
+                address: new Address(zip5: $zip5),
+                lineItems: [
+                    new LineItem(
+                        amount: number_format($price, 2, '.', ''),
+                        category: $category,
+                    ),
+                ],
+            );
+        } catch (OpenSalesTaxException $e) {
+            error_log('[opensalestax-woocommerce] calculate failed: ' . $e->getMessage());
+            return $this->fallbackOnError();
+        } catch (\Throwable $e) {
+            error_log('[opensalestax-woocommerce] unexpected calculate error: ' . get_class($e) . ': ' . $e->getMessage());
+            return $this->fallbackOnError();
+        }
+
+        $taxTotal = (float) $result->taxTotal;
+        $out = [self::SYNTHETIC_RATE_ID => $taxTotal];
+        $this->cache->set($payloadKey, $out);
+        return $out;
+    }
+
+    private function isCustomerVatExempt(): bool
+    {
+        if (!function_exists('WC')) {
+            return false;
+        }
+        $wc = \WC();
+        if (!is_object($wc) || !isset($wc->customer) || !is_object($wc->customer)) {
+            return false;
+        }
+        $customer = $wc->customer;
+        if (!method_exists($customer, 'is_vat_exempt')) {
+            return false;
+        }
+        return (bool) $customer->is_vat_exempt();
+    }
+
+    private function resolveDestinationZip(): ?string
+    {
+        if (!function_exists('WC')) {
+            return null;
+        }
+        $wc = \WC();
+        if (!is_object($wc) || !isset($wc->customer) || !is_object($wc->customer)) {
+            return null;
+        }
+        $customer = $wc->customer;
+
+        $taxBasedOn = self::stringOption('woocommerce_tax_based_on', 'shipping');
+        $rawZip = match ($taxBasedOn) {
+            'billing' => $this->callCustomerMethod($customer, 'get_billing_postcode'),
+            'base'    => self::stringOption('woocommerce_store_postcode', ''),
+            default   => $this->callCustomerMethod($customer, 'get_shipping_postcode')
+                ?: $this->callCustomerMethod($customer, 'get_billing_postcode'),
+        };
+
+        if ($rawZip === '') {
+            return null;
+        }
+
+        $digits = preg_replace('/\D/', '', $rawZip) ?? '';
+        if (strlen($digits) < 5) {
+            return null;
+        }
+        return substr($digits, 0, 5);
+    }
+
+    private static function stringOption(string $name, string $default): string
+    {
+        $v = get_option($name, $default);
+        return is_string($v) ? $v : $default;
+    }
+
+    private function callCustomerMethod(object $customer, string $method): string
+    {
+        if (!method_exists($customer, $method)) {
+            return '';
+        }
+        /** @var mixed $val */
+        $val = $customer->{$method}();
+        return is_string($val) ? $val : '';
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rates  WC tax-rate rows for this line
+     * @return string|null  OST category name, or null to short-circuit "no tax"
+     */
+    private function resolveCategory(array $rates): ?string
+    {
+        // WC passes the matched tax-rate rows. The class is encoded in
+        // `tax_rate_class` per row. v0.1 maps the well-known classes:
+        //   '' or 'standard'  → general
+        //   'reduced-rate'    → general (engine handles state-by-state reduction)
+        //   'zero-rate'       → null (skip)
+        //   anything else     → general (default fallback)
+        foreach ($rates as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $class = isset($row['tax_rate_class']) && is_string($row['tax_rate_class'])
+                ? $row['tax_rate_class']
+                : '';
+            if ($class === 'zero-rate') {
+                return null;
+            }
+        }
+        return 'general';
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    private function fallbackOnError(): array
+    {
+        $mode = self::stringOption('opensalestax_error_fallback', 'block');
+        return $mode === 'zero' ? [self::SYNTHETIC_RATE_ID => 0.0] : [];
+    }
+}
