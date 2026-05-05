@@ -27,6 +27,17 @@ class ClientFactory
         if ($baseUrl === '') {
             return null;
         }
+
+        // SSRF defense: refuse to issue requests to private/loopback/link-local
+        // hosts unless the admin has explicitly opted in via the
+        // `opensalestax_allow_private_nets` option or constant. See
+        // src/UrlValidator.php and docs/SECURITY-REVIEW.md.
+        $validation = UrlValidator::validate($baseUrl);
+        if ($validation['code'] !== UrlValidator::OK) {
+            error_log('[opensalestax-woocommerce] base URL rejected: ' . $validation['message']);
+            return null;
+        }
+
         $apiKey = self::stringOption('opensalestax_api_key', '');
         $rawTimeout = get_option('opensalestax_timeout_seconds', 5.0);
         $timeoutSeconds = is_numeric($rawTimeout) ? (float) $rawTimeout : 5.0;

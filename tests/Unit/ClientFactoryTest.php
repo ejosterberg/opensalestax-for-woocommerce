@@ -64,6 +64,12 @@ final class ClientFactoryTest extends TestCase
             'args' => ['opensalestax_timeout_seconds', 5.0],
             'return' => 5.0,
         ]);
+        // SSRF check (added in v0.1.2): mock the private-nets opt-in so the
+        // private-IP test URLs aren't rejected.
+        WP_Mock::userFunction('get_option', [
+            'args' => ['opensalestax_allow_private_nets', '0'],
+            'return' => '1',
+        ]);
 
         $factory = new ClientFactory();
         $client = $factory->build();
@@ -87,6 +93,12 @@ final class ClientFactoryTest extends TestCase
             'times' => 1,
             'args' => ['opensalestax_timeout_seconds', 5.0],
             'return' => 5.0,
+        ]);
+        // SSRF check (added in v0.1.2): mock the private-nets opt-in so the
+        // private-IP test URLs aren't rejected.
+        WP_Mock::userFunction('get_option', [
+            'args' => ['opensalestax_allow_private_nets', '0'],
+            'return' => '1',
         ]);
 
         $factory = new ClientFactory();
@@ -113,6 +125,12 @@ final class ClientFactoryTest extends TestCase
             'times' => 1,
             'args' => ['opensalestax_timeout_seconds', 5.0],
             'return' => 5.0,
+        ]);
+        // SSRF check (added in v0.1.2): mock the private-nets opt-in so the
+        // private-IP test URLs aren't rejected.
+        WP_Mock::userFunction('get_option', [
+            'args' => ['opensalestax_allow_private_nets', '0'],
+            'return' => '1',
         ]);
 
         $factory = new ClientFactory();

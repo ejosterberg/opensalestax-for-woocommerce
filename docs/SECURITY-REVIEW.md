@@ -1,6 +1,6 @@
-# Security Review — opensalestax-woocommerce v0.1.1
+# Security Review — opensalestax-woocommerce v0.1.2
 
-**Reviewer:** automated audit + manual code review (2026-05-04)
+**Reviewer:** automated audit + manual code review (2026-05-04, updated 2026-05-05 with v0.1.2 SSRF mitigation)
 **Scope:** all PHP source files in `src/` and `opensalestax-woocommerce.php`
 **Methodology:** OWASP Top 10 mapped to WP-plugin-specific concerns; manual line-by-line review against CWE-driven checklist; `composer audit` against current advisories.
 
@@ -10,44 +10,59 @@
 |---|---|---|
 | 🔴 **Critical** | 0 | — |
 | 🟠 **High** | 0 | — |
-| 🟡 **Medium** | 1 | Documented (residual) |
+| 🟡 **Medium** | 1 | **✅ Fixed in v0.1.2** (SSRF mitigation) |
 | 🟢 **Low / Informational** | 4 | 3 fixed, 1 documented |
 | ✅ **Defense-in-depth** | 1 | Fixed in v0.1.1 |
 
-**No critical or high-severity findings.** The plugin's threat model is bounded by the `manage_woocommerce` capability — every state-changing path is gated behind it. The one medium finding (SSRF via base-URL configuration) requires admin compromise to exploit and produces low payoff for an attacker; documented as a known consideration rather than blocked.
+**No critical, high, or medium-severity open findings.** The plugin's threat model is bounded by the `manage_woocommerce` capability — every state-changing path is gated behind it. The previously-medium SSRF finding was resolved in v0.1.2 with a private-IP filter that's strict-by-default (admins must explicitly opt in to allow private hosts via the `opensalestax_allow_private_nets` WP option or `OPENSALESTAX_ALLOW_PRIVATE_NETS` constant).
 
 `composer audit` against the dependency tree (production + dev): **0 known CVEs**.
 
 ## Findings
 
-### 🟡 MEDIUM — SSRF via admin-controlled base URL
+### ✅ ~~MEDIUM — SSRF via admin-controlled base URL~~ FIXED in v0.1.2
 
-**File:** `src/ClientFactory.php`
+**Files:** `src/ClientFactory.php`, `src/UrlValidator.php` (new in v0.1.2)
 **CWE:** CWE-918 (Server-Side Request Forgery)
+**Status:** Resolved 2026-05-05.
 
-The plugin reads `opensalestax_base_url` from `wp_options` and uses it as the destination for HTTP requests to the engine. An attacker who has compromised an admin account (or a malicious admin) could set the URL to:
+The plugin reads `opensalestax_base_url` from `wp_options` and uses it as the destination for HTTP requests to the engine. An attacker who has compromised an admin account could previously set the URL to:
 
 - An internal service the WP server can reach (e.g. `http://localhost:6379/` for Redis)
 - AWS metadata endpoint (`http://169.254.169.254/latest/meta-data/`)
 - Other sensitive intranet hosts
 
-The plugin then issues HTTP requests to that URL on the customer's normal cart/checkout flow, potentially:
+**Fix (v0.1.2):**
 
-1. **Probing internal services** — the request response (or timing/error patterns) could leak information about reachable internal hosts
-2. **Triggering side effects** on services that act on URL hits (e.g., GET requests with query params that an internal service interprets as commands)
+The new `OpenSalesTax\WooCommerce\UrlValidator::validate()` runs at `Client` build time AND can be invoked from the settings save flow (planned for v0.2 settings-page UX). It rejects URLs whose host:
 
-**Mitigation in place (v0.1):**
+- Has no scheme or a non-`http(s)` scheme (no `file://`, `gopher://`, etc.)
+- Resolves to RFC1918 (10/8, 172.16/12, 192.168/16)
+- Resolves to loopback (127/8, ::1)
+- Resolves to link-local (169.254/16, fe80::/10) — including AWS metadata endpoint
+- Resolves to carrier-grade NAT (100.64/10, RFC 6598)
+- Cannot be resolved at all (host doesn't exist)
 
-- Setting the URL requires `manage_woocommerce` capability — not a low-privilege endpoint
-- The HTTP method is always GET or POST with a JSON body in a well-defined shape (`/v1/health`, `/v1/states`, `/v1/rates`, `/v1/calculate`); not user-controllable arbitrary requests
-- Engine response is parsed as a typed JSON shape; non-conforming responses produce errors but don't leak unparsed bytes to the customer
+When validation fails, the `Client` build returns null and a structured message is logged via `error_log`. WC's tax-calc filter then degrades according to the configured `opensalestax_error_fallback` setting (`block` or `zero`).
 
-**Residual risk:** A compromised admin account is already game-over for the WP install; SSRF is one of many things the attacker could do. Real-world impact is bounded.
+**Opt-out for legitimate self-hosted-on-LAN deployments:**
 
-**v0.2 hardening (planned, not blocking):**
+Many merchants run the OpenSalesTax engine on the same private network as their WordPress server (a common self-hosted pattern). Setting EITHER:
 
-- Validate the configured base URL doesn't resolve to RFC1918 / link-local / loopback ranges by default; allow override via a `OPENSALESTAX_ALLOW_PRIVATE_NETS=1` env var for self-hosted-on-LAN setups
-- Document the SSRF consideration in the install guide
+- The WP option `opensalestax_allow_private_nets` to `"1"`:
+  ```bash
+  wp option update opensalestax_allow_private_nets "1"
+  ```
+- OR the constant `OPENSALESTAX_ALLOW_PRIVATE_NETS` to `true` in `wp-config.php`:
+  ```php
+  define('OPENSALESTAX_ALLOW_PRIVATE_NETS', true);
+  ```
+
+…allows the plugin to talk to private IPs. The constant takes precedence over the option, so `wp-config.php`-based opt-in survives a database compromise.
+
+**Residual risk:** Acceptable. An admin who can both compromise the WP install AND modify `wp-config.php` is already game-over; SSRF is one of many problems they can cause. The default-strict policy raises the bar materially for the database-only-compromise case.
+
+**Test coverage:** 17 unit tests in `tests/Unit/UrlValidatorTest.php` cover loopback, all RFC1918 ranges, link-local, CGNAT, public IPs, public hostnames, file://, ftp://, empty URLs, and the opt-in path.
 
 ### 🟢 LOW — API key stored in plain-text in wp_options
 
