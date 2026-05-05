@@ -6,6 +6,24 @@ Versioning: [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-05
+
+### Added
+- **WooCommerce Subscriptions integration** (`src/SubscriptionsBridge.php`). When WC Subscriptions creates a renewal order, the bridge hooks `wcs_renewal_order_created` (priority 20) and forces a fresh tax recalculation. WC's `calculate_taxes()` walks the renewal's line items and triggers our `woocommerce_calc_tax` filter → engine → today's rates. Without this, WC Subscriptions silently copies the parent sub's tax line onto every renewal, so a state law change three months in goes uncollected on every renewal until someone notices.
+- After recalc, the bridge runs `OrderTaxBreakdown::captureOnOrderCreate()` so the renewal order's admin page shows the same per-jurisdiction breakdown table as a regular order.
+- Public static `SubscriptionsBridge::isSubscriptionsActive()` for future admin notices / dashboard badges.
+- 7 new unit tests in `SubscriptionsBridgeTest`: not-installed detection, register no-op without subs, present detection, register hooks when subs active, recalc method-call sequence, recalc survives engine errors, recalc skips non-object input.
+
+### Changed
+- `Plugin::wireUp()` instantiates and registers the new `SubscriptionsBridge` handler. The bridge is gated on `class_exists('WC_Subscriptions')` at register-time, so installations without WC Subscriptions are unaffected.
+
+### Verified
+On VM 907 (no WC Subscriptions installed): bridge correctly reports inactive, `register()` is a no-op, regular cart calculations still work. With a stub `WC_Subscriptions` class loaded: bridge reports active. Live verification against a real WC Subscriptions install is deferred to merchants and contributors who own the paid plugin — the integration is built to spec against the documented `wcs_renewal_order_created` hook.
+
+### Known limitations
+- Live testing against the real WC Subscriptions plugin (a paid product) is not part of CI. The integration is tested with stubs against the documented hook signature; real-world signal welcomed via GitHub issues.
+- Failed recalcs log to the PHP error log and let the renewal proceed with the inherited tax line — better to undercollect by a few cents than block a renewal payment.
+
 ## [0.3.3] — 2026-05-05
 
 ### Added

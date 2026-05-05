@@ -279,6 +279,26 @@ wp wc order get <order_id> --user=admin --fields=id,total,total_tax,billing,ship
 
 The order's `total_tax` field should match what the engine returned for that customer's address.
 
+### WooCommerce Subscriptions integration (v0.4+)
+
+If you're running [WooCommerce Subscriptions](https://woocommerce.com/products/woocommerce-subscriptions/), the plugin auto-detects it and recalculates tax on every renewal order — destination rates change over time (state law updates, new transit districts, customer relocation), and the default WC Subscriptions behavior is to *copy* the parent sub's original tax line forward. That's wrong if rates changed.
+
+The plugin's `SubscriptionsBridge` hooks `wcs_renewal_order_created` and forces a fresh calculation against today's rates. The renewal order's admin page also gets the per-jurisdiction breakdown panel just like a regular order.
+
+**Verifying it's active:**
+
+```bash
+wp eval 'echo OpenSalesTax\WooCommerce\SubscriptionsBridge::isSubscriptionsActive() ? "active" : "inactive";'
+```
+
+If you want to disable the auto-recalc and stick with the inherited tax (e.g., for testing), remove the action manually:
+
+```php
+remove_action('wcs_renewal_order_created', [opensalestax_subscriptions_bridge_instance(), 'recalcRenewalTax'], 20);
+```
+
+(There's no UI toggle; this is a power-user override.)
+
 ### Per-order jurisdiction breakdown (v0.3+)
 
 Open any order in the WC admin (`wp-admin/admin.php?page=wc-orders&action=edit&id=<order_id>`). Below the order details you'll see an **OpenSalesTax breakdown** panel showing the engine's full state / county / city / district split — what each jurisdiction's rate was and how many cents went to each. Useful for audit reconciliation.

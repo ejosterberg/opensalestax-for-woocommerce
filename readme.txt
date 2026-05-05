@@ -6,7 +6,7 @@ Tested up to: 6.9
 Requires PHP: 8.2
 WC requires at least: 8.2
 WC tested up to: 10.5
-Stable tag: 0.3.3
+Stable tag: 0.4.0
 License: Apache License 2.0
 License URI: https://www.apache.org/licenses/LICENSE-2.0
 
@@ -79,6 +79,13 @@ The plugin is filter-only — it doesn't write to `wp_woocommerce_tax_rates`. Lo
 Tax calculations are provided as-is for convenience. The merchant is solely responsible for tax-collection accuracy and remittance to the appropriate jurisdictions. Verify against your state Department of Revenue before remitting.
 
 == Changelog ==
+
+= 0.4.0 — 2026-05-05 =
+
+* WooCommerce Subscriptions integration. Renewal orders now get a fresh tax recalculation against current rates instead of inheriting the parent subscription's stale tax line. Hooks `wcs_renewal_order_created` (priority 20) and triggers WC's standard `calculate_taxes()` flow, which lands in our `woocommerce_calc_tax` filter → engine → fresh tax. The per-jurisdiction breakdown is also captured on the renewal order's admin page.
+* No-op when WC Subscriptions is not installed (gated on `class_exists('WC_Subscriptions')`); safe to ship to all installations.
+* Failures during recalc are non-fatal — logs to PHP error log and continues; the renewal still proceeds with whatever tax was originally inherited.
+* 7 new unit tests in `SubscriptionsBridgeTest`; 98 unit tests total.
 
 = 0.3.3 — 2026-05-05 =
 
