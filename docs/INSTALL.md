@@ -275,6 +275,20 @@ wp wc order get <order_id> --user=admin --fields=id,total,total_tax,billing,ship
 
 The order's `total_tax` field should match what the engine returned for that customer's address.
 
+### Per-order jurisdiction breakdown (v0.3+)
+
+Open any order in the WC admin (`wp-admin/admin.php?page=wc-orders&action=edit&id=<order_id>`). Below the order details you'll see an **OpenSalesTax breakdown** panel showing the engine's full state / county / city / district split — what each jurisdiction's rate was and how many cents went to each. Useful for audit reconciliation.
+
+The breakdown is also accessible programmatically:
+
+```bash
+# Inspect the structured breakdown for accounting integrations
+wp eval '$o = wc_get_order(123); print_r(OpenSalesTax\WooCommerce\OrderTaxBreakdown::get($o));'
+
+# Or pull the raw JSON directly from order meta
+wp wc order get 123 --user=admin --field=meta_data | grep _opensalestax_breakdown
+```
+
 ---
 
 ## Troubleshooting
@@ -334,6 +348,10 @@ wp option delete opensalestax_cache_ttl_minutes
 wp option delete opensalestax_error_fallback
 wp option delete opensalestax_tax_class_map
 wp option delete opensalestax_allow_private_nets
+
+# Optionally remove per-order breakdown meta from existing orders:
+wp db query "DELETE FROM wp_postmeta WHERE meta_key = '_opensalestax_breakdown'"
+wp db query "DELETE FROM wp_wc_orders_meta WHERE meta_key = '_opensalestax_breakdown'"
 ```
 
 Plugin deactivation also flushes the OpenSalesTax transient cache. To remove the placeholder tax rate too:

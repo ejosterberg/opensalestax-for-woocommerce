@@ -150,6 +150,21 @@ if (!function_exists('wp_die')) {
         exit;
     }
 }
+if (!function_exists('esc_html')) {
+    function esc_html(string $text): string
+    {
+        return $text;
+    }
+}
+if (!function_exists('esc_html__')) {
+    function esc_html__(string $text, string $domain = 'default'): string
+    {
+        return $text;
+    }
+}
+if (!function_exists('error_log')) {
+    // Provided by PHP itself; only for type-completeness
+}
 if (!function_exists('wp_register_script')) {
     function wp_register_script(string $handle, string $src, array $deps = [], string|false|null $ver = false, bool $in_footer = false): bool
     {

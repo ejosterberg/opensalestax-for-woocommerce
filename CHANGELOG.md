@@ -6,6 +6,21 @@ Versioning: [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-05
+
+### Added
+- **Per-order jurisdiction breakdown view** (`src/OrderTaxBreakdown.php`). On `woocommerce_checkout_create_order`, the plugin re-runs the engine calculation against the order's destination + line items and stores the full per-jurisdiction breakdown (state / county / city / district splits, each with its own rate % and tax $) as JSON in the order meta `_opensalestax_breakdown`. The WC admin order-edit page renders this as a table beneath the order details — useful for audit reconciliation and showing customers exactly where the tax went.
+- New hook: `woocommerce_admin_order_data_after_order_details` renders the breakdown panel.
+- Public static accessor `OrderTaxBreakdown::get(WC_Order $order): ?array` for accounting integrations that want to consume the structured breakdown.
+- 12 new unit tests in `OrderTaxBreakdownTest`: capture path, ZIP fallback, zero-rate skip, malformed-meta safety, render-with-jurisdictions, render-with-note, XSS-defense (real `htmlspecialchars` via WP_Mock override), engine-error tolerance.
+
+### Changed
+- `Plugin::wireUp()` instantiates and registers the new `OrderTaxBreakdown` handler.
+- Test bootstrap dropped redundant `esc_html` / `esc_html__` stubs (WP_Mock owns those); the XSS-defense test installs a real escaper via `WP_Mock::userFunction` so the test isn't self-defeating.
+
+### Verified end-to-end
+On VM 907 against engine v0.36, ZIP 55401: created a real `WC_Order` with a $100 product, captured the breakdown, decoded the meta. Result: 6 jurisdictions (city/county/state + 3 transit districts) summing to $9.025 — exactly matching what the calc filter charged. `renderHtml()` produces a 1506-byte table with all jurisdictions visible.
+
 ## [0.2.0] — 2026-05-05
 
 ### Added

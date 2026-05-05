@@ -25,3 +25,8 @@ if (!function_exists('wp_json_encode')) {
         return json_encode($data, $options, $depth);
     }
 }
+
+// Note: WP_Mock provides pass-through stubs for esc_html / esc_html__ / etc.
+// For the OrderTaxBreakdown XSS-defense test, we override them via
+// WP_Mock::userFunction within the test itself with a real htmlspecialchars
+// callback so the escaping behavior is actually verified.

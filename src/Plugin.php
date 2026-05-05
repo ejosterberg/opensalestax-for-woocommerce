@@ -60,10 +60,12 @@ final class Plugin
         $taxHandler = new TaxHandler($clientFactory, $cache);
         $settings = new Settings();
         $tester = new ConnectionTester($clientFactory);
+        $breakdown = new OrderTaxBreakdown($clientFactory);
 
         $taxHandler->register();
         $settings->register();
         $tester->register();
+        $breakdown->register();
 
         // Register WP-CLI subcommands. We register each method explicitly so
         // the dashed subcommand naming (`test-connection`, `cache-flush`,

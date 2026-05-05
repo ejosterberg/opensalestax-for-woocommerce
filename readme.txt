@@ -6,7 +6,7 @@ Tested up to: 6.9
 Requires PHP: 8.2
 WC requires at least: 8.2
 WC tested up to: 10.5
-Stable tag: 0.2.0
+Stable tag: 0.3.0
 License: Apache License 2.0
 License URI: https://www.apache.org/licenses/LICENSE-2.0
 
@@ -79,6 +79,12 @@ The plugin is filter-only — it doesn't write to `wp_woocommerce_tax_rates`. Lo
 Tax calculations are provided as-is for convenience. The merchant is solely responsible for tax-collection accuracy and remittance to the appropriate jurisdictions. Verify against your state Department of Revenue before remitting.
 
 == Changelog ==
+
+= 0.3.0 — 2026-05-05 =
+
+* Per-order jurisdiction breakdown view. Every order created by checkout now stores the engine's full per-jurisdiction tax breakdown (state / county / city / district splits with rate % and tax $) on the order as meta `_opensalestax_breakdown`. The WC admin order-edit page renders this as a clean table — useful for audit reconciliation and showing customers exactly where their tax dollars went.
+* Failures during breakdown capture are non-fatal — checkout proceeds even if the engine call fails (the headline tax was already computed via the calc filter).
+* 12 new unit tests in `OrderTaxBreakdownTest`; 69 unit tests total, all passing.
 
 = 0.2.0 — 2026-05-05 =
 

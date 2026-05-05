@@ -1,0 +1,333 @@
+<?php
+
+// SPDX-License-Identifier: Apache-2.0
+
+declare(strict_types=1);
+
+namespace OpenSalesTax\WooCommerce;
+
+use OpenSalesTax\Address;
+use OpenSalesTax\Exceptions\OpenSalesTaxException;
+use OpenSalesTax\LineItem;
+
+defined('ABSPATH') || exit;
+
+/**
+ * Persists the per-jurisdiction tax breakdown on each WC order and renders it
+ * on the admin order-edit page.
+ *
+ * The engine returns a full breakdown (state / county / city / district splits)
+ * with every /v1/calculate response, but `woocommerce_calc_tax` only consumes
+ * the rolled-up total. We re-call the engine on `woocommerce_checkout_create_order`
+ * with the order's final line items and persist the breakdown as order meta —
+ * the result is cached by the same Cache layer, so re-runs are usually free.
+ *
+ * The breakdown is stored as JSON on the meta key `_opensalestax_breakdown`
+ * (underscore prefix → hidden from WC's default custom-fields UI). Read it
+ * programmatically via `OrderTaxBreakdown::get($order)`.
+ */
+final class OrderTaxBreakdown
+{
+    public const META_KEY = '_opensalestax_breakdown';
+
+    public function __construct(
+        private readonly ClientFactory $clientFactory,
+    ) {
+    }
+
+    public function register(): void
+    {
+        add_action('woocommerce_checkout_create_order', [$this, 'captureOnOrderCreate'], 20, 2);
+        add_action('woocommerce_admin_order_data_after_order_details', [$this, 'renderOrderDetails']);
+    }
+
+    /**
+     * Hook handler — fires when WC is creating an order from the cart.
+     *
+     * Re-runs the engine calculation against the order's destination + line
+     * items and stores the breakdown on the order. We don't touch the order's
+     * tax totals (those are already correct via the calc filter); this is
+     * pure metadata for display + audit.
+     *
+     * Failures here are non-fatal — checkout proceeds even if the breakdown
+     * call fails. We log and move on.
+     *
+     * @param object $order  WC_Order being constructed (typed as object so
+     *                       we don't pull WC's class definitions into static
+     *                       analysis; runtime guards check for the methods).
+     * @param mixed  $data   posted checkout data (unused; we read from $order)
+     */
+    public function captureOnOrderCreate(object $order, $data): void
+    {
+        if (!method_exists($order, 'get_shipping_postcode') || !method_exists($order, 'update_meta_data')) {
+            return;
+        }
+
+        try {
+            $payload = $this->buildPayload($order);
+            if ($payload === null) {
+                return; // No US ZIP, no taxable lines, etc.
+            }
+
+            $client = $this->clientFactory->build();
+            if ($client === null) {
+                return; // Plugin not configured.
+            }
+
+            $result = $client->calculate(
+                address: new Address(zip5: $payload['zip5']),
+                lineItems: $payload['lines'],
+            );
+        } catch (OpenSalesTaxException $e) {
+            error_log('[opensalestax-woocommerce] breakdown capture failed: ' . $e->getMessage());
+            return;
+        } catch (\Throwable $e) {
+            error_log('[opensalestax-woocommerce] breakdown capture unexpected: ' . get_class($e) . ': ' . $e->getMessage());
+            return;
+        }
+
+        $serialized = self::serializeResult($result);
+        $json = wp_json_encode($serialized);
+        if (is_string($json)) {
+            $order->update_meta_data(self::META_KEY, $json);
+        }
+    }
+
+    /**
+     * Hook handler — renders the breakdown table inside the WC admin order page.
+     *
+     * @param object $order
+     */
+    public function renderOrderDetails(object $order): void
+    {
+        if (!method_exists($order, 'get_meta')) {
+            return;
+        }
+
+        $breakdown = self::get($order);
+        if ($breakdown === null) {
+            return;
+        }
+
+        echo self::renderHtml($breakdown);
+    }
+
+    /**
+     * Read the breakdown as a structured array, or null if absent / malformed.
+     *
+     * Public so accounting integrations can pull the data without re-parsing.
+     * Shape (when non-null):
+     *
+     *   subtotal    string
+     *   tax_total   string
+     *   lines[]
+     *     category       string
+     *     amount         string
+     *     tax            string
+     *     note           string|null
+     *     jurisdictions[]
+     *       type      string
+     *       name      string
+     *       rate_pct  string
+     *       tax       string|null
+     *
+     * @param object $order
+     * @return array<string, mixed>|null
+     */
+    public static function get(object $order): ?array
+    {
+        if (!method_exists($order, 'get_meta')) {
+            return null;
+        }
+        $raw = $order->get_meta(self::META_KEY, true);
+        if (!is_string($raw) || $raw === '') {
+            return null;
+        }
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded) || !isset($decoded['lines']) || !is_array($decoded['lines'])) {
+            return null;
+        }
+        return $decoded;
+    }
+
+    /**
+     * Pull the destination ZIP + line items off the order in the format the
+     * SDK expects. Returns null if the order isn't a US ZIP we can handle.
+     *
+     * @param object $order
+     * @return array{zip5: string, lines: array<int, LineItem>}|null
+     */
+    private function buildPayload(object $order): ?array
+    {
+        $zip5 = $this->resolveZip($order);
+        if ($zip5 === null) {
+            return null;
+        }
+
+        if (!method_exists($order, 'get_items')) {
+            return null;
+        }
+        $items = $order->get_items();
+        if (!is_array($items) && !($items instanceof \Traversable)) {
+            return null;
+        }
+
+        $lineItems = [];
+        foreach ($items as $item) {
+            if (!is_object($item) || !method_exists($item, 'get_total')) {
+                continue;
+            }
+            $amount = (float) $item->get_total();
+            if ($amount <= 0) {
+                continue;
+            }
+            $taxClass = method_exists($item, 'get_tax_class') ? (string) $item->get_tax_class() : '';
+            $category = TaxClassMap::mapClassToCategory($taxClass);
+            if ($category === null) {
+                continue; // Skip non-taxable line.
+            }
+            $lineItems[] = new LineItem(
+                amount: number_format($amount, 2, '.', ''),
+                category: $category,
+            );
+        }
+
+        if (count($lineItems) === 0) {
+            return null;
+        }
+
+        return ['zip5' => $zip5, 'lines' => $lineItems];
+    }
+
+    /**
+     * Resolve the destination ZIP from the order's shipping (or billing fallback)
+     * postcode.
+     *
+     * @param object $order
+     */
+    private function resolveZip(object $order): ?string
+    {
+        $candidates = [];
+        if (method_exists($order, 'get_shipping_postcode')) {
+            $candidates[] = (string) $order->get_shipping_postcode();
+        }
+        if (method_exists($order, 'get_billing_postcode')) {
+            $candidates[] = (string) $order->get_billing_postcode();
+        }
+        foreach ($candidates as $raw) {
+            $digits = preg_replace('/\D/', '', $raw) ?? '';
+            if (strlen($digits) >= 5) {
+                return substr($digits, 0, 5);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Convert the SDK's CalculateResponse object into a plain array suitable
+     * for JSON storage. The shape is stable and documented in get()'s phpdoc.
+     *
+     * @param \OpenSalesTax\Responses\CalculateResponse $result
+     * @return array<string, mixed>
+     */
+    private static function serializeResult(\OpenSalesTax\Responses\CalculateResponse $result): array
+    {
+        $lines = [];
+        foreach ($result->lines as $line) {
+            $jurisdictions = [];
+            foreach ($line->jurisdictions as $j) {
+                $jurisdictions[] = [
+                    'type' => $j->type,
+                    'name' => $j->name,
+                    'rate_pct' => $j->ratePct,
+                    'tax' => $j->tax,
+                ];
+            }
+            $lines[] = [
+                'category' => $line->category,
+                'amount' => $line->amount,
+                'tax' => $line->tax,
+                'note' => $line->note,
+                'jurisdictions' => $jurisdictions,
+            ];
+        }
+        return [
+            'subtotal' => $result->subtotal,
+            'tax_total' => $result->taxTotal,
+            'lines' => $lines,
+        ];
+    }
+
+    /**
+     * Render the breakdown as HTML for the admin order page.
+     *
+     * @param array<string, mixed> $breakdown
+     */
+    public static function renderHtml(array $breakdown): string
+    {
+        $lines = $breakdown['lines'] ?? [];
+        if (!is_array($lines) || count($lines) === 0) {
+            return '';
+        }
+
+        $out = '<div class="opensalestax-breakdown" style="margin-top:1em;padding:1em;background:#f6f7f7;border-left:4px solid #2271b1;">';
+        $out .= '<h4 style="margin-top:0;">' . esc_html__('OpenSalesTax breakdown', 'opensalestax-woocommerce') . '</h4>';
+        $out .= '<p class="description" style="margin:0 0 .5em;">'
+              . esc_html__('Per-jurisdiction tax computed by the OpenSalesTax engine. Use for audit reconciliation; the rolled-up total is what was charged.', 'opensalestax-woocommerce')
+              . '</p>';
+
+        foreach ($lines as $line) {
+            if (!is_array($line)) {
+                continue;
+            }
+            $category = (string) ($line['category'] ?? '');
+            $amount = (string) ($line['amount'] ?? '0');
+            $tax = (string) ($line['tax'] ?? '0');
+            $note = isset($line['note']) && is_string($line['note']) ? $line['note'] : null;
+            $jurisdictions = is_array($line['jurisdictions'] ?? null) ? $line['jurisdictions'] : [];
+
+            $out .= '<table class="widefat striped" style="margin-bottom:.5em;">';
+            $out .= '<thead><tr>';
+            $out .= '<th colspan="4">' . sprintf(
+                /* translators: 1: category slug, 2: pre-tax amount, 3: tax amount */
+                esc_html__('Line: %1$s — amount $%2$s, tax $%3$s', 'opensalestax-woocommerce'),
+                esc_html($category),
+                esc_html($amount),
+                esc_html($tax),
+            ) . '</th>';
+            $out .= '</tr><tr>';
+            $out .= '<th>' . esc_html__('Type', 'opensalestax-woocommerce') . '</th>';
+            $out .= '<th>' . esc_html__('Jurisdiction', 'opensalestax-woocommerce') . '</th>';
+            $out .= '<th style="text-align:right;">' . esc_html__('Rate', 'opensalestax-woocommerce') . '</th>';
+            $out .= '<th style="text-align:right;">' . esc_html__('Tax', 'opensalestax-woocommerce') . '</th>';
+            $out .= '</tr></thead><tbody>';
+
+            if (count($jurisdictions) === 0) {
+                $out .= '<tr><td colspan="4"><em>' . esc_html__('No jurisdictions returned (non-taxable category or uncovered ZIP).', 'opensalestax-woocommerce') . '</em></td></tr>';
+            } else {
+                foreach ($jurisdictions as $j) {
+                    if (!is_array($j)) {
+                        continue;
+                    }
+                    $jTax = $j['tax'] ?? null;
+                    $jTaxStr = (is_string($jTax) || is_numeric($jTax)) ? '$' . (string) $jTax : '—';
+                    $out .= '<tr>';
+                    $out .= '<td>' . esc_html((string) ($j['type'] ?? '')) . '</td>';
+                    $out .= '<td>' . esc_html((string) ($j['name'] ?? '')) . '</td>';
+                    $out .= '<td style="text-align:right;">' . esc_html((string) ($j['rate_pct'] ?? '0')) . '%</td>';
+                    $out .= '<td style="text-align:right;">' . esc_html($jTaxStr) . '</td>';
+                    $out .= '</tr>';
+                }
+            }
+
+            $out .= '</tbody></table>';
+
+            if ($note !== null && $note !== '') {
+                $out .= '<p style="margin:0 0 1em;"><em>' . esc_html__('Note:', 'opensalestax-woocommerce') . ' ' . esc_html($note) . '</em></p>';
+            }
+        }
+
+        $out .= '</div>';
+        return $out;
+    }
+}

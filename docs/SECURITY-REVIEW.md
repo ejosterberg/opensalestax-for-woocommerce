@@ -1,6 +1,6 @@
-# Security Review — opensalestax-woocommerce v0.2.0
+# Security Review — opensalestax-woocommerce v0.3.0
 
-**Reviewer:** automated audit + manual code review (2026-05-04, updated 2026-05-05 with v0.1.2 SSRF mitigation, re-reviewed 2026-05-05 for v0.2.0 TaxClassMap)
+**Reviewer:** automated audit + manual code review (2026-05-04, updated 2026-05-05 with v0.1.2 SSRF mitigation, v0.2.0 TaxClassMap, and v0.3.0 OrderTaxBreakdown)
 **Scope:** all PHP source files in `src/` and `opensalestax-woocommerce.php`
 **Methodology:** OWASP Top 10 mapped to WP-plugin-specific concerns; manual line-by-line review against CWE-driven checklist; `composer audit` against current advisories.
 
@@ -137,23 +137,25 @@ WordPress convention: every plugin PHP file should start with `defined('ABSPATH'
 | Composer dependency tree | Known CVEs | `composer audit` clean ✓ |
 | `TaxClassMap` JSON option (v0.2.0) | Untrusted JSON deserialization | `json_decode($json, true)` returns plain arrays, never objects; non-array result rejected, malformed JSON falls back to `[]` defaults; values validated in `set()` against the `VALID_CATEGORIES` allow-list before persistence ✓ |
 | `TaxClassMap::set()` (v0.2.0) | Capability check | Capability gating enforced at the call site (WP-CLI requires shell access; admin UI not yet exposed). When the admin UI lands in v0.3, calls must be wrapped in `current_user_can('manage_woocommerce')` ⚠ |
+| `OrderTaxBreakdown::renderHtml()` (v0.3.0) | XSS via engine-supplied jurisdiction names / notes | Every interpolated value passes through `esc_html()` / `esc_html__()`; jurisdiction `name`, `type`, `rate_pct`, `tax`, line `category`/`amount`/`tax`/`note` all escaped. Verified via `testRenderHtmlEscapesUserContent` with a real `htmlspecialchars` callback (WP_Mock's default pass-through would have masked the test). ✓ |
+| `OrderTaxBreakdown::captureOnOrderCreate()` (v0.3.0) | JSON injection via order line data | Order line items are read via WC's typed accessors (`get_total()`, `get_tax_class()`); values are cast to `float`/`string` before reaching the SDK; no user-controlled string flows into `wp_json_encode` un-typed. ✓ |
+| `OrderTaxBreakdown::get()` (v0.3.0) | Untrusted JSON deserialization from order meta | `json_decode($raw, true)` returns plain arrays; non-array result rejected; missing/non-array `lines` key rejected. Meta is written only by our own `captureOnOrderCreate`, but an attacker with order-meta write capability still couldn't get HTML to execute thanks to `esc_html()` in the renderer. ✓ |
 
 ## Test surface
 
-The plugin's PHPUnit suite exercises 57 test cases / 79 assertions covering:
+The plugin's PHPUnit suite exercises 69 test cases / 106 assertions covering:
 
 - Tax-exempt customer path
 - ZIP resolution from billing/shipping/base settings
 - Cache hit/miss paths
 - Engine error handling (block + zero modes)
 - ZIP regex sanitization
-- WC tax-class to OST category mapping (built-in defaults, custom overrides, skip semantics, malformed JSON fallback, invalid-category-throws — 16 tests)
+- WC tax-class to OST category mapping (16 tests)
 - UrlValidator: loopback, all RFC1918 ranges, link-local, CGNAT, public IPs, schemes, opt-in path (17 tests)
 - PlaceholderRate row management
+- OrderTaxBreakdown: capture path, ZIP fallback, zero-rate skip, malformed-meta safety, render-with-jurisdictions, render-with-note, **XSS-defense (real `htmlspecialchars` via `WP_Mock::userFunction` callback override — proves escaping is wired everywhere)**, engine-error tolerance (12 tests)
 
 Plus the end-to-end integration test against a real WP+WooCom Proxmox VM 907 (`tests/Integration/E2ECartTaxTest.php`).
-
-No security-specific fuzz test yet; the plugin's input surface is small enough that the existing tests provide adequate coverage. The `TaxClassMap` malformed-JSON test (`testMalformedOptionFallsBackToDefaults`) confirms the option-deserialization path is failure-tolerant.
 
 ## Recommendations for users
 
@@ -174,7 +176,8 @@ Once a fix lands, the disclosure will be coordinated via:
 
 ## Re-review schedule
 
-- **v0.2.0** — re-reviewed 2026-05-05 for the TaxClassMap addition. New finding: deserialization safety verified; admin-UI exposure of `TaxClassMap::set()` is deferred to v0.3 and must be capability-gated when added.
-- **v0.3** — full re-review when WC Subscriptions support and the admin-UI tax-class mapper ship
+- **v0.2.0** — re-reviewed 2026-05-05 for the TaxClassMap addition.
+- **v0.3.0** — re-reviewed 2026-05-05 for OrderTaxBreakdown. Output-escaping verified end-to-end with a real-`htmlspecialchars` test override (since WP_Mock pass-through would have masked the bug). Order meta deserialization safe (json_decode returns arrays, type-checked).
+- **v0.3.x / v0.4** — full re-review when admin-UI tax-class mapper, debug log, status widget, and WC Subscriptions support ship. Admin-UI specifically must capability-gate every state-changing call.
 - **Quarterly** — `composer audit` + a quick pass on any new code paths
 - **On every contributor PR** — manual review of any security-touching change
