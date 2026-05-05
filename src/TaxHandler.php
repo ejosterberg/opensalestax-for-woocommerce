@@ -205,12 +205,8 @@ final class TaxHandler
      */
     private function resolveCategory(array $rates): ?string
     {
-        // WC passes the matched tax-rate rows. The class is encoded in
-        // `tax_rate_class` per row. v0.1 maps the well-known classes:
-        //   '' or 'standard'  → general
-        //   'reduced-rate'    → general (engine handles state-by-state reduction)
-        //   'zero-rate'       → null (skip)
-        //   anything else     → general (default fallback)
+        // Take the first row's tax_rate_class — WC always matches by class,
+        // so all rate rows for one line item share the same class.
         foreach ($rates as $row) {
             if (!is_array($row)) {
                 continue;
@@ -218,11 +214,12 @@ final class TaxHandler
             $class = isset($row['tax_rate_class']) && is_string($row['tax_rate_class'])
                 ? $row['tax_rate_class']
                 : '';
-            if ($class === 'zero-rate') {
-                return null;
-            }
+            return TaxClassMap::mapClassToCategory($class);
         }
-        return 'general';
+        // No rate rows at all — fall back to general. Should be rare; means
+        // WC fired the filter without any matching rates, which only happens
+        // when WC tax calculation is in a degenerate state.
+        return TaxClassMap::FALLBACK_CATEGORY;
     }
 
     /**

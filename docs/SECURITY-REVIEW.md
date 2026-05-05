@@ -1,6 +1,6 @@
-# Security Review — opensalestax-woocommerce v0.1.2
+# Security Review — opensalestax-woocommerce v0.2.0
 
-**Reviewer:** automated audit + manual code review (2026-05-04, updated 2026-05-05 with v0.1.2 SSRF mitigation)
+**Reviewer:** automated audit + manual code review (2026-05-04, updated 2026-05-05 with v0.1.2 SSRF mitigation, re-reviewed 2026-05-05 for v0.2.0 TaxClassMap)
 **Scope:** all PHP source files in `src/` and `opensalestax-woocommerce.php`
 **Methodology:** OWASP Top 10 mapped to WP-plugin-specific concerns; manual line-by-line review against CWE-driven checklist; `composer audit` against current advisories.
 
@@ -135,21 +135,25 @@ WordPress convention: every plugin PHP file should start with `defined('ABSPATH'
 | Hard-coded secrets / credentials | Embedded keys | None found ✓ |
 | `eval()` / `assert()` / dynamic include | Code injection vectors | None used (test code uses `eval` only inside PHPUnit fixtures, not production paths) ✓ |
 | Composer dependency tree | Known CVEs | `composer audit` clean ✓ |
+| `TaxClassMap` JSON option (v0.2.0) | Untrusted JSON deserialization | `json_decode($json, true)` returns plain arrays, never objects; non-array result rejected, malformed JSON falls back to `[]` defaults; values validated in `set()` against the `VALID_CATEGORIES` allow-list before persistence ✓ |
+| `TaxClassMap::set()` (v0.2.0) | Capability check | Capability gating enforced at the call site (WP-CLI requires shell access; admin UI not yet exposed). When the admin UI lands in v0.3, calls must be wrapped in `current_user_can('manage_woocommerce')` ⚠ |
 
 ## Test surface
 
-The plugin's PHPUnit suite exercises 19 test cases / 21 assertions covering:
+The plugin's PHPUnit suite exercises 57 test cases / 79 assertions covering:
 
 - Tax-exempt customer path
 - ZIP resolution from billing/shipping/base settings
 - Cache hit/miss paths
 - Engine error handling (block + zero modes)
 - ZIP regex sanitization
-- WC tax-class to OST category mapping
+- WC tax-class to OST category mapping (built-in defaults, custom overrides, skip semantics, malformed JSON fallback, invalid-category-throws — 16 tests)
+- UrlValidator: loopback, all RFC1918 ranges, link-local, CGNAT, public IPs, schemes, opt-in path (17 tests)
+- PlaceholderRate row management
 
-Plus the end-to-end integration test against a real WP+WooCom Proxmox VM (`tests/Integration/E2ECartTaxTest.php`).
+Plus the end-to-end integration test against a real WP+WooCom Proxmox VM 907 (`tests/Integration/E2ECartTaxTest.php`).
 
-No security-specific fuzz test in v0.1; the plugin's input surface is small enough that the existing tests provide adequate coverage. v0.2 may add explicit malicious-input tests (oversized ZIPs, non-numeric amounts, unicode-edge-case categories) once the surface grows.
+No security-specific fuzz test yet; the plugin's input surface is small enough that the existing tests provide adequate coverage. The `TaxClassMap` malformed-JSON test (`testMalformedOptionFallsBackToDefaults`) confirms the option-deserialization path is failure-tolerant.
 
 ## Recommendations for users
 
@@ -170,6 +174,7 @@ Once a fix lands, the disclosure will be coordinated via:
 
 ## Re-review schedule
 
-- **v0.2** — full re-review when SSRF mitigation, WC Subscriptions support, and WP-CLI commands ship
+- **v0.2.0** — re-reviewed 2026-05-05 for the TaxClassMap addition. New finding: deserialization safety verified; admin-UI exposure of `TaxClassMap::set()` is deferred to v0.3 and must be capability-gated when added.
+- **v0.3** — full re-review when WC Subscriptions support and the admin-UI tax-class mapper ship
 - **Quarterly** — `composer audit` + a quick pass on any new code paths
 - **On every contributor PR** — manual review of any security-touching change

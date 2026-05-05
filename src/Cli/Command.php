@@ -12,6 +12,7 @@ use OpenSalesTax\LineItem;
 use OpenSalesTax\WooCommerce\Cache;
 use OpenSalesTax\WooCommerce\ClientFactory;
 use OpenSalesTax\WooCommerce\PlaceholderRate;
+use OpenSalesTax\WooCommerce\TaxClassMap;
 
 defined('ABSPATH') || exit;
 
@@ -165,6 +166,92 @@ final class Command
             return;
         }
         self::success("Placeholder rate row: tax_rate_id={$rateId}, tax_rate_name='" . PlaceholderRate::RATE_NAME . "'");
+    }
+
+    /**
+     * List the effective WC tax-class → OST category mapping.
+     *
+     * Built-in defaults plus any merchant overrides. Empty-string mapping
+     * means "skip this class — explicitly non-taxable".
+     *
+     * ## EXAMPLES
+     *
+     *     wp opensalestax tax-class-list
+     */
+    public function tax_class_list(): void
+    {
+        $effective = TaxClassMap::loadEffectiveMap();
+        $custom = TaxClassMap::loadCustomMap();
+
+        self::log('Effective WC tax-class → OST category mapping:');
+        foreach ($effective as $wcClass => $ostCategory) {
+            $label = $wcClass === '' ? '(standard / empty slug)' : $wcClass;
+            $cat = $ostCategory === '' ? '(skip — non-taxable)' : $ostCategory;
+            $marker = isset($custom[$wcClass]) ? ' [custom override]' : '';
+            self::log(sprintf('  %-30s → %s%s', $label, $cat, $marker));
+        }
+        self::log('');
+        self::log('Valid OST categories: ' . implode(', ', TaxClassMap::VALID_CATEGORIES));
+        self::log("Use '' (empty string) to mark a class as non-taxable.");
+        self::log('');
+        self::log('Set with:   wp opensalestax tax-class-set <wc-class-slug> <ost-category>');
+        self::log('Reset with: wp opensalestax tax-class-reset');
+    }
+
+    /**
+     * Set a custom WC tax-class → OST category mapping.
+     *
+     * ## OPTIONS
+     *
+     * <wc-class>
+     * : The WC tax-class slug, e.g. `clothing`, `reduced-rate`, or '' for Standard.
+     *
+     * <ost-category>
+     * : One of: general, clothing, groceries, prescription_drugs, prepared_food, digital_goods.
+     *   Use '' (empty string) to mark the class as non-taxable.
+     *
+     * ## EXAMPLES
+     *
+     *     # Map a custom "Clothing" tax class to OST's clothing category
+     *     wp opensalestax tax-class-set clothing clothing
+     *
+     *     # Map a custom "Software" class to digital_goods
+     *     wp opensalestax tax-class-set software digital_goods
+     *
+     *     # Mark a custom "Gift cards" class as non-taxable
+     *     wp opensalestax tax-class-set gift-cards ''
+     *
+     * @param array<int, string> $args
+     */
+    public function tax_class_set(array $args): void
+    {
+        if (count($args) < 2) {
+            self::error('Usage: wp opensalestax tax-class-set <wc-class> <ost-category>');
+        }
+        $wcClass = $args[0];
+        $ostCategory = $args[1];
+
+        try {
+            TaxClassMap::set($wcClass, $ostCategory);
+        } catch (\InvalidArgumentException $e) {
+            self::error($e->getMessage());
+        }
+        $label = $wcClass === '' ? '(standard / empty slug)' : $wcClass;
+        $catLabel = $ostCategory === '' ? '(skip — non-taxable)' : $ostCategory;
+        self::success("Mapped WC class '{$label}' → OST category '{$catLabel}'.");
+    }
+
+    /**
+     * Reset all custom WC tax-class mappings; revert to built-in defaults.
+     *
+     * ## EXAMPLES
+     *
+     *     wp opensalestax tax-class-reset
+     */
+    public function tax_class_reset(): void
+    {
+        TaxClassMap::reset();
+        self::success('Custom WC tax-class mappings cleared. Now using built-in defaults.');
     }
 
     private static function success(string $msg): void

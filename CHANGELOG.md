@@ -6,6 +6,19 @@ Versioning: [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-05-05
+
+### Added
+- **WC tax class → OST category custom mapping** (`src/TaxClassMap.php`). v0.1.x hard-coded every WooCommerce tax class to OST's `general` category, which was wrong for shops with `clothing`, `groceries`, or other custom classes. Merchants can now map any WC tax-class slug to one of the six OST categories (`general`, `clothing`, `groceries`, `prescription_drugs`, `prepared_food`, `digital_goods`) or to skip (non-taxable). Built-in defaults still apply for `''`/`standard`/`reduced-rate` → `general` and `zero-rate` → skip. Persisted as JSON in `wp_options['opensalestax_tax_class_map']`.
+- WP-CLI commands: `wp opensalestax tax-class-list`, `tax-class-set <wc-class> <ost-category>`, `tax-class-reset`. The set command validates the category and refuses unknown values with a helpful error.
+- 16 new unit tests in `TaxClassMapTest`: defaults, overrides, skip semantics, malformed-JSON fallback, set/reset, invalid-category-throws.
+
+### Changed
+- `TaxHandler::resolveCategory()` now consults `TaxClassMap::mapClassToCategory()` instead of hard-coding `zero-rate → skip` and everything else to `general`. The behavior for the four built-in WC classes is unchanged when no overrides are configured, so v0.1.x sites upgrade transparently.
+
+### Verified end-to-end
+On VM 907 against engine v0.36, ZIP 55401: `general` category yields MN's full 9.025% stack ($9.025 on $100); `clothing` correctly returns $0 with engine note "Clothing is non-taxable in Minnesota (Minn. Stat. 297A.67 subd 8)." Same `WC_Cart` payload, mapping flips the result.
+
 ## [0.1.2] — 2026-05-05
 
 ### Added

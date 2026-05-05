@@ -57,6 +57,12 @@ if (!function_exists('delete_option')) {
         return true;
     }
 }
+if (!function_exists('wp_json_encode')) {
+    function wp_json_encode(mixed $data, int $options = 0, int $depth = 512): string|false
+    {
+        return json_encode($data, $options, $depth);
+    }
+}
 if (!function_exists('get_transient')) {
     function get_transient(string $name): mixed
     {

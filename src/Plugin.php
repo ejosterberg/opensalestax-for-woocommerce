@@ -75,6 +75,9 @@ final class Plugin
             \WP_CLI::add_command('opensalestax cache-flush', [$cli, 'cache_flush']);
             \WP_CLI::add_command('opensalestax calc', [$cli, 'calc']);
             \WP_CLI::add_command('opensalestax placeholder-rate', [$cli, 'placeholder_rate']);
+            \WP_CLI::add_command('opensalestax tax-class-list', [$cli, 'tax_class_list']);
+            \WP_CLI::add_command('opensalestax tax-class-set', [$cli, 'tax_class_set']);
+            \WP_CLI::add_command('opensalestax tax-class-reset', [$cli, 'tax_class_reset']);
         }
     }
 

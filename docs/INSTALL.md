@@ -198,7 +198,7 @@ wp db query "INSERT INTO wp_woocommerce_tax_rates (tax_rate_country, tax_rate_st
 
 This inserts a single zero-rate placeholder for the US so WC's tax loop runs. The plugin then takes over the actual calculation via the `woocommerce_calc_tax` filter.
 
-> **Known v0.1 limitation** — `WC_Cart::get_tax_totals()` returns an empty breakdown for OpenSalesTax-computed taxes (the synthetic rate-id doesn't match a row in `wp_woocommerce_tax_rates`). The total tax is correct; only the per-line breakdown display is affected. Fix planned for v0.2.
+> **Tax-line breakdown** — `WC_Cart::get_tax_totals()` resolves the OpenSalesTax line via the placeholder rate row registered on activation (v0.1.1+), so the per-line breakdown displays "OpenSalesTax" correctly.
 
 ---
 
@@ -222,7 +222,46 @@ Or in the browser: **WC → Settings → General → "Enable taxes"** checkbox.
 
 ---
 
-## Step 8 — Watch transactions go through
+## Step 8 — (Optional) Map custom WC tax classes to OST categories
+
+WooCommerce ships three default tax classes — Standard, Reduced rate, and Zero rate. Many shops also define custom classes like "Clothing", "Groceries", or "Gift cards." OpenSalesTax cares about the *category* (which is what drives state-level exemptions like MN's clothing exemption or grocery rules in many states), so the plugin needs to know which OST category each WC class corresponds to.
+
+**Defaults (no configuration needed):**
+
+| WC tax-class slug | OST category   |
+|-------------------|----------------|
+| `''` / `standard` | `general`      |
+| `reduced-rate`    | `general`      |
+| `zero-rate`       | (skip — non-taxable) |
+
+**To map a custom class:**
+
+```bash
+# See the current effective mapping
+wp opensalestax tax-class-list
+
+# Map "Clothing" WC class to OST clothing category (so MN clothing exemption applies)
+wp opensalestax tax-class-set clothing clothing
+
+# Map a "Groceries" class to groceries
+wp opensalestax tax-class-set groceries groceries
+
+# Mark a custom "Gift cards" class as non-taxable
+wp opensalestax tax-class-set gift-cards ''
+
+# Reset back to built-in defaults
+wp opensalestax tax-class-reset
+```
+
+Valid OST categories: `general`, `clothing`, `groceries`, `prescription_drugs`, `prepared_food`, `digital_goods`. Unknown categories are rejected with a helpful error.
+
+**How to know which category to pick** — look at the OST engine's `category` documentation; pick the one whose state-level rules match how your shop wants the line treated. When in doubt, leave it `general` (it's the safe default for most goods).
+
+> **Why this matters** — without a custom mapping, every WC class gets `general`, which over-collects in states with category-specific exemptions. A MN shop selling clothing would charge sales tax on a $100 shirt that should be $0.
+
+---
+
+## Step 9 — Watch transactions go through
 
 After making your first real-money sale (or test-mode):
 
@@ -293,6 +332,8 @@ wp option delete opensalestax_base_url
 wp option delete opensalestax_api_key
 wp option delete opensalestax_cache_ttl_minutes
 wp option delete opensalestax_error_fallback
+wp option delete opensalestax_tax_class_map
+wp option delete opensalestax_allow_private_nets
 ```
 
 Plugin deactivation also flushes the OpenSalesTax transient cache. To remove the placeholder tax rate too:

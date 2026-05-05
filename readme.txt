@@ -6,7 +6,7 @@ Tested up to: 6.9
 Requires PHP: 8.2
 WC requires at least: 8.2
 WC tested up to: 10.5
-Stable tag: 0.1.0
+Stable tag: 0.2.0
 License: Apache License 2.0
 License URI: https://www.apache.org/licenses/LICENSE-2.0
 
@@ -79,6 +79,22 @@ The plugin is filter-only — it doesn't write to `wp_woocommerce_tax_rates`. Lo
 Tax calculations are provided as-is for convenience. The merchant is solely responsible for tax-collection accuracy and remittance to the appropriate jurisdictions. Verify against your state Department of Revenue before remitting.
 
 == Changelog ==
+
+= 0.2.0 — 2026-05-05 =
+
+* WC tax-class → OST category custom mapping. Merchants with `clothing`, `groceries`, or other custom WC tax classes can now map them to the right OST category (or mark non-taxable). v0.1.x hard-coded everything to `general`, which mis-categorized clothing/groceries shops in states with category-specific exemptions (e.g., MN clothing exemption).
+* WP-CLI: `wp opensalestax tax-class-list`, `tax-class-set <wc-class> <ost-category>`, `tax-class-reset`.
+* 16 new unit tests; 57 unit tests total, all passing.
+
+= 0.1.2 — 2026-05-05 =
+
+* SSRF mitigation: engine base URL is now validated against private/loopback/link-local/CGNAT IP ranges. Opt-in for LAN deployments via the `opensalestax_allow_private_nets` option or `OPENSALESTAX_ALLOW_PRIVATE_NETS` constant in `wp-config.php`.
+
+= 0.1.1 — 2026-05-04 =
+
+* PlaceholderRate: registers a row in `wp_woocommerce_tax_rates` named "OpenSalesTax" so `WC_Cart::get_tax_totals()` labels the line correctly in the cart and order summary. (Fixes the v0.1.0 cosmetic gap where the tax line showed `Tax lines (0)`.)
+* WP-CLI: `wp opensalestax test-connection`, `cache-flush`, `calc <zip> <amount>`, `placeholder-rate`.
+* Direct-access guards on every src class.
 
 = 0.1.0 — 2026-05-04 =
 

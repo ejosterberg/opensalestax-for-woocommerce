@@ -104,6 +104,11 @@ final class TaxHandlerTest extends TestCase
             'args' => ['woocommerce_tax_based_on', 'shipping'],
             'return' => 'shipping',
         ]);
+        // TaxClassMap consults the merchant-override option; no override → defaults apply.
+        WP_Mock::userFunction('get_option', [
+            'args' => ['opensalestax_tax_class_map', ''],
+            'return' => '',
+        ]);
 
         $rates = [['tax_rate_class' => 'zero-rate', 'rate' => 0.0]];
 

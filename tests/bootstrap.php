@@ -17,3 +17,11 @@ if (!defined('ABSPATH')) {
 if (!defined('PHP_VERSION_ID')) {
     define('PHP_VERSION_ID', 80200);
 }
+
+// WP global helper used by TaxClassMap::set(); WP_Mock doesn't provide it.
+if (!function_exists('wp_json_encode')) {
+    function wp_json_encode(mixed $data, int $options = 0, int $depth = 512): string|false
+    {
+        return json_encode($data, $options, $depth);
+    }
+}
