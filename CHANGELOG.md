@@ -6,6 +6,25 @@ Versioning: [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-05-05
+
+### Added
+- **Refund handling** (`OrderTaxBreakdown::captureOnRefundCreate`). Hooks `woocommerce_refund_created` (priority 20). When a refund is created, the bridge looks up the parent order's stored breakdown, prorates every value by `(refund_total / parent_total) × -1`, and stores the negated breakdown on the refund. Result: the refund's admin page renders the same audit panel as a regular order, with negative jurisdiction amounts. No engine round-trip required; falls back to no-op when the parent has no stored breakdown (e.g., a refund of an order created before v0.3.0).
+- **Engine-unreachable admin notice** (`src/EngineHealthNotice.php`). New class hooks `admin_notices` and renders a red banner when the engine is unreachable AND the plugin is configured. Capability-gated to `manage_woocommerce`. Reuses the same 60s health-probe transient as `DashboardWidget` so the notice never causes an extra engine call. Probes once per 60s when no cached state exists; uses a separate `opensalestax_engine_unreachable` transient marker to distinguish "never probed" from "probed and failed" without re-probing on every admin page-load.
+- 4 new tests in `OrderTaxBreakdownTest` for refund proration (success path, missing-parent-breakdown no-op, zero-parent-total skip, missing `wc_get_order` skip).
+- 6 new tests in `EngineHealthNoticeTest`: capability check, not-configured silent, healthy-cache silent, failure-marker renders banner, no-cache + 500 → renders banner + sets marker, no-cache + healthy → sets cache + clears marker.
+- **Regression test for the v0.1.1 cache bug** (`CacheTest::testGetAcceptsNumericKeysFromTransientLayer`). Pins the v0.3.2 `Cache::get()` fix that accepts numeric-string keys after the WP transient layer coerces them to int. Plus `testGetRejectsNonScalarValues` to confirm the validator still rejects genuinely-corrupt payloads.
+
+### Changed
+- `OrderTaxBreakdown::register()` now also hooks `woocommerce_refund_created`.
+- `Plugin::wireUp()` instantiates and registers the new `EngineHealthNotice` handler.
+
+### Verified end-to-end
+On VM 907 against engine v0.39:
+- Order #14 ($100 in MN) captured 668-byte breakdown across 6 jurisdictions.
+- Refund #16 ($-50, exactly half) captured 721-byte prorated breakdown — `tax_total: -4.5125` (exactly half of -9.025), Minneapolis line `$0.50 → $-0.25`, note: "Prorated from parent order #14 at ratio -0.5000".
+- Engine-unreachable notice: silent when engine reachable; renders 381-byte `notice-error` banner with "engine is unreachable" copy when configured base URL points at a closed port.
+
 ## [0.4.0] — 2026-05-05
 
 ### Added

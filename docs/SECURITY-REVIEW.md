@@ -1,6 +1,6 @@
-# Security Review — opensalestax-woocommerce v0.4.0
+# Security Review — opensalestax-woocommerce v0.4.1
 
-**Reviewer:** automated audit + manual code review (2026-05-04, updated 2026-05-05 with v0.1.2 SSRF mitigation, v0.2.0 TaxClassMap, v0.3.0 OrderTaxBreakdown, v0.3.1 DashboardWidget, v0.3.2 CalculationLog, v0.3.3 admin-UI tax-class mapper, and v0.4.0 SubscriptionsBridge)
+**Reviewer:** automated audit + manual code review (2026-05-04, updated 2026-05-05 with v0.1.2 SSRF mitigation, v0.2.0 TaxClassMap, v0.3.0 OrderTaxBreakdown, v0.3.1 DashboardWidget, v0.3.2 CalculationLog, v0.3.3 admin-UI tax-class mapper, v0.4.0 SubscriptionsBridge, and v0.4.1 EngineHealthNotice + refund handling)
 **Scope:** all PHP source files in `src/` and `opensalestax-woocommerce.php`
 **Methodology:** OWASP Top 10 mapped to WP-plugin-specific concerns; manual line-by-line review against CWE-driven checklist; `composer audit` against current advisories.
 
@@ -140,6 +140,9 @@ WordPress convention: every plugin PHP file should start with `defined('ABSPATH'
 | `Settings::saveTaxClassMap()` (v0.3.3) | Capability + input validation | Capability check `current_user_can('manage_woocommerce')` runs before any state change; reset and persist paths both gated. Posted slugs/categories pass through `wp_unslash` + `sanitize_text_field` before validation against `TaxClassMap::VALID_CATEGORIES`; invalid categories are silently dropped (the dropdown shouldn't produce them, but defense-in-depth). The render path uses `esc_attr` on field names so malicious slug values can't break out of the form. ✓ |
 | `SubscriptionsBridge::register()` (v0.4.0) | Hook gating | `class_exists('WC_Subscriptions')` check before `add_action`. Without WC Subscriptions installed, no hook is registered, so no surface change for the vast majority of installations. ✓ |
 | `SubscriptionsBridge::recalcRenewalTax()` (v0.4.0) | Untrusted hook payload | Defensive `is_object($renewalOrder)` + `method_exists()` checks before calling any methods. Failures wrapped in `\Throwable` catch — error logged, renewal proceeds. Doesn't trust the hook's `$subscription` argument at all (we read everything from `$renewalOrder`). ✓ |
+| `OrderTaxBreakdown::captureOnRefundCreate()` (v0.4.1) | Refund prorating safety | Reads parent ID from refund's `get_parent_id()`, fetches via `wc_get_order()`. Existing parent breakdown deserialization goes through the same `get()` validator (rejects non-array roots / malformed JSON). Prorating math operates on numeric coercion of the stored values; non-numeric fields default to 0.0. No untrusted user input flows into the new path — refund objects are constructed by WC core. ✓ |
+| `EngineHealthNotice::render()` (v0.4.1) | Capability + XSS | `current_user_can('manage_woocommerce')` checked first. Only the (hard-coded) message strings, the (admin-built) settings URL, and translation strings are rendered; all pass through `esc_html__` / `esc_url`. No user-controlled values flow through. ✓ |
+| `EngineHealthNotice::probe()` (v0.4.1) | Repeated engine probes | Failure marker (`opensalestax_engine_unreachable`) prevents re-probing within 60s after a failure. Successful probes populate the same 60s transient as `DashboardWidget`, so the notice + widget share one probe budget per minute. No additional engine load on top of the dashboard widget's existing probe. ✓ |
 | `OrderTaxBreakdown::renderHtml()` (v0.3.0) | XSS via engine-supplied jurisdiction names / notes | Every interpolated value passes through `esc_html()` / `esc_html__()`; jurisdiction `name`, `type`, `rate_pct`, `tax`, line `category`/`amount`/`tax`/`note` all escaped. Verified via `testRenderHtmlEscapesUserContent` with a real `htmlspecialchars` callback (WP_Mock's default pass-through would have masked the test). ✓ |
 | `OrderTaxBreakdown::captureOnOrderCreate()` (v0.3.0) | JSON injection via order line data | Order line items are read via WC's typed accessors (`get_total()`, `get_tax_class()`); values are cast to `float`/`string` before reaching the SDK; no user-controlled string flows into `wp_json_encode` un-typed. ✓ |
 | `OrderTaxBreakdown::get()` (v0.3.0) | Untrusted JSON deserialization from order meta | `json_decode($raw, true)` returns plain arrays; non-array result rejected; missing/non-array `lines` key rejected. Meta is written only by our own `captureOnOrderCreate`, but an attacker with order-meta write capability still couldn't get HTML to execute thanks to `esc_html()` in the renderer. ✓ |
@@ -152,7 +155,7 @@ WordPress convention: every plugin PHP file should start with `defined('ABSPATH'
 
 ## Test surface
 
-The plugin's PHPUnit suite exercises 98 test cases / 170 assertions covering:
+The plugin's PHPUnit suite exercises 109 test cases / 190 assertions covering:
 
 - Tax-exempt customer path
 - ZIP resolution from billing/shipping/base settings
@@ -167,6 +170,9 @@ The plugin's PHPUnit suite exercises 98 test cases / 170 assertions covering:
 - CalculationLog: disabled-noop / write-when-enabled / ring-buffer-cap / error-entry / load-empty / load-malformed / limit-results / isEnabled tri-state / clear (10 tests)
 - Settings::saveTaxClassMap: capability rejects / reset path / no-op when no map / valid persist / invalid silent-drop / all categories accepted (6 tests)
 - SubscriptionsBridge: not-installed detection / register no-op without subs / present detection / register hooks when active / recalc method-call sequence / recalc survives engine errors / recalc skips non-object (7 tests)
+- Refund handling: prorate-success / no-parent-breakdown-noop / zero-parent-total-skip / wc_get_order-unavailable-skip (4 tests in OrderTaxBreakdownTest)
+- EngineHealthNotice: capability rejects / not-configured silent / healthy-cache silent / failure-marker renders / no-cache + 500 → renders + sets marker / no-cache + healthy → sets cache + clears marker (6 tests)
+- Cache regression: numeric-string keys round-trip / non-scalar values rejected (2 tests)
 
 Plus the end-to-end integration test against a real WP+WooCom Proxmox VM 907 (`tests/Integration/E2ECartTaxTest.php`).
 
@@ -195,6 +201,7 @@ Once a fix lands, the disclosure will be coordinated via:
 - **v0.3.2** — re-reviewed 2026-05-05 for CalculationLog. Deserialization safety verified; output escaping in renderRecentLog passes every value through `esc_html` via a stringify helper.
 - **v0.3.3** — re-reviewed 2026-05-05 for the admin-UI tax-class mapper. Capability check verified live on VM 907 (unprivileged user's POST is no-op'd, admin's persists). Server-side validation against `VALID_CATEGORIES` allow-list confirmed.
 - **v0.4.0** — re-reviewed 2026-05-05 for SubscriptionsBridge. Hook gating verified (no add_action without `class_exists('WC_Subscriptions')`); recalcRenewalTax defensive-types its inputs; failures wrapped in `\Throwable` catch.
+- **v0.4.1** — re-reviewed 2026-05-05 for EngineHealthNotice + refund handling. Capability gating + output escaping on the notice; refund prorating reads existing meta through the same validator path. Cache regression test pins the v0.3.2 fix.
 - **v0.5+** — full re-review when net-new external surfaces ship (e.g., WP.org plugin directory submission requires WordPress.org's own plugin-review checklist).
 - **Quarterly** — `composer audit` + a quick pass on any new code paths
 - **On every contributor PR** — manual review of any security-touching change

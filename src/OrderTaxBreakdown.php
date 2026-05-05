@@ -39,6 +39,7 @@ final class OrderTaxBreakdown
     {
         add_action('woocommerce_checkout_create_order', [$this, 'captureOnOrderCreate'], 20, 2);
         add_action('woocommerce_admin_order_data_after_order_details', [$this, 'renderOrderDetails']);
+        add_action('woocommerce_refund_created', [$this, 'captureOnRefundCreate'], 20, 2);
     }
 
     /**
@@ -91,6 +92,131 @@ final class OrderTaxBreakdown
         if (is_string($json)) {
             $order->update_meta_data(self::META_KEY, $json);
         }
+    }
+
+    /**
+     * Hook handler — fires after WC creates a refund from a parent order.
+     *
+     * Refunds present a wrinkle: the engine takes positive line amounts, and
+     * a re-calc against an unchanged destination would just produce the same
+     * rates as the parent order. So instead of an engine round-trip, we
+     * prorate the parent order's stored breakdown by the refund/parent ratio
+     * and store the negated values on the refund. Result: the refund's admin
+     * page shows the same audit panel as a regular order, with negative
+     * jurisdiction amounts.
+     *
+     * Falls back to no-op if the parent has no stored breakdown (e.g., an
+     * order created before v0.3.0). WC's default refund flow already
+     * proportions the tax_total correctly, so the refund payment is right
+     * either way — this is audit metadata, not a calculation.
+     *
+     * @param int|string $refundId  ID of the just-created refund
+     * @param array<string, mixed>|mixed $args      WC's refund-creation args (unused; we read from the refund)
+     */
+    public function captureOnRefundCreate($refundId, $args): void
+    {
+        if (!function_exists('wc_get_order')) {
+            return;
+        }
+
+        $refund = wc_get_order($refundId);
+        if (!is_object($refund) || !method_exists($refund, 'get_parent_id')) {
+            return;
+        }
+
+        $parentId = (int) $refund->get_parent_id();
+        if ($parentId <= 0) {
+            return;
+        }
+        $parentOrder = wc_get_order($parentId);
+        if (!is_object($parentOrder)) {
+            return;
+        }
+
+        $parentBreakdown = self::get($parentOrder);
+        if ($parentBreakdown === null) {
+            // Parent has no stored breakdown — nothing to prorate. Bail
+            // silently; tax_total on the refund is still correct via WC's
+            // default flow.
+            return;
+        }
+
+        $refundTotal = method_exists($refund, 'get_total') ? abs((float) $refund->get_total()) : 0.0;
+        $parentTotal = method_exists($parentOrder, 'get_total') ? abs((float) $parentOrder->get_total()) : 0.0;
+        if ($parentTotal <= 0.0) {
+            return;
+        }
+        $ratio = -1.0 * ($refundTotal / $parentTotal); // negative — refund reduces collected tax
+
+        $serialized = self::prorateBreakdown($parentBreakdown, $ratio, $parentId);
+        $json = wp_json_encode($serialized);
+        if (is_string($json) && method_exists($refund, 'update_meta_data')) {
+            $refund->update_meta_data(self::META_KEY, $json);
+            if (method_exists($refund, 'save')) {
+                $refund->save();
+            }
+        }
+    }
+
+    /**
+     * Apply a multiplier (typically negative for refunds) to every tax-bearing
+     * field in a stored breakdown, returning a new breakdown array. The
+     * jurisdiction structure is preserved so the renderer renders identically
+     * to a regular order.
+     *
+     * @param array<string, mixed> $breakdown
+     * @return array<string, mixed>
+     */
+    private static function prorateBreakdown(array $breakdown, float $ratio, int $parentOrderId): array
+    {
+        $proratedLines = [];
+        $linesIn = is_array($breakdown['lines'] ?? null) ? $breakdown['lines'] : [];
+        foreach ($linesIn as $line) {
+            if (!is_array($line)) {
+                continue;
+            }
+            $proratedJurisdictions = [];
+            $jl = is_array($line['jurisdictions'] ?? null) ? $line['jurisdictions'] : [];
+            foreach ($jl as $j) {
+                if (!is_array($j)) {
+                    continue;
+                }
+                $jTax = (isset($j['tax']) && is_numeric($j['tax'])) ? (float) $j['tax'] : 0.0;
+                $proratedJurisdictions[] = [
+                    'type' => isset($j['type']) ? (string) $j['type'] : '',
+                    'name' => isset($j['name']) ? (string) $j['name'] : '',
+                    'rate_pct' => isset($j['rate_pct']) ? (string) $j['rate_pct'] : '0',
+                    'tax' => self::numStr($jTax * $ratio, 4),
+                ];
+            }
+            $lineAmount = (isset($line['amount']) && is_numeric($line['amount'])) ? (float) $line['amount'] : 0.0;
+            $lineTax = (isset($line['tax']) && is_numeric($line['tax'])) ? (float) $line['tax'] : 0.0;
+            $proratedLines[] = [
+                'category' => isset($line['category']) ? (string) $line['category'] : '',
+                'amount' => self::numStr($lineAmount * $ratio, 2),
+                'tax' => self::numStr($lineTax * $ratio, 4),
+                'note' => sprintf('Prorated from parent order #%d at ratio %.4f', $parentOrderId, $ratio),
+                'jurisdictions' => $proratedJurisdictions,
+            ];
+        }
+
+        $subtotal = (isset($breakdown['subtotal']) && is_numeric($breakdown['subtotal'])) ? (float) $breakdown['subtotal'] : 0.0;
+        $taxTotal = (isset($breakdown['tax_total']) && is_numeric($breakdown['tax_total'])) ? (float) $breakdown['tax_total'] : 0.0;
+        return [
+            'subtotal' => self::numStr($subtotal * $ratio, 2),
+            'tax_total' => self::numStr($taxTotal * $ratio, 4),
+            'lines' => $proratedLines,
+        ];
+    }
+
+    /**
+     * Format a float as a string with N decimal places, matching how the
+     * engine returns numeric strings. Avoids `(string) $float` which can
+     * produce locale-dependent output.
+     */
+    private static function numStr(float $value, int $decimals): string
+    {
+        return number_format($value, $decimals, '.', '');
     }
 
     /**

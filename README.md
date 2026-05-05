@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE) [![PHP](https://img.shields.io/badge/php-%E2%89%A58.2-777bb4)](composer.json) [![WordPress](https://img.shields.io/badge/wordpress-%E2%89%A56.2-21759b)](readme.txt) [![WooCommerce](https://img.shields.io/badge/woocommerce-%E2%89%A58.2-96588a)](readme.txt)
 
-**Status:** v0.4.0. Tested against WordPress 6.6+ / WooCommerce 10.7 / OpenSalesTax engine v0.39. 98 unit tests + an end-to-end integration test on a real WP+WooCom Proxmox VM.
+**Status:** v0.4.1. Tested against WordPress 6.6+ / WooCommerce 10.7 / OpenSalesTax engine v0.39. 109 unit tests + an end-to-end integration test on a real WP+WooCom Proxmox VM.
 
 ## What this saves you
 
@@ -83,6 +83,8 @@ HPOS-compatible: this plugin doesn't post-process orders in v0.1, so the HPOS ta
 
 ## What's shipping
 
+- ✅ **Refund handling** (v0.4.1) — when you issue a refund (full or partial), the refund order's admin page shows a prorated per-jurisdiction tax breakdown with negative values. Math: `parent_breakdown × (refund_total / parent_total) × -1`. No engine round-trip needed.
+- ✅ **Engine-unreachable admin notice** (v0.4.1) — every WP-admin page renders a red banner when the OpenSalesTax engine is down or misconfigured. Closes the silent-failure gap where merchants could collect wrong tax for days without realizing.
 - ✅ **WooCommerce Subscriptions integration** (v0.4.0) — renewal orders get a fresh tax recalc against current rates instead of inheriting the parent sub's stale tax line. Per-jurisdiction breakdown captured on the renewal too. No-op without WC Subscriptions installed.
 - ✅ **Admin-UI tax-class mapper** (v0.3.3) — replaces the CLI-only configuration with a UI under WC > Settings > Tax > OpenSalesTax. Auto-discovers all WC tax classes (built-in + custom), shows a dropdown per row, includes a "Reset all to defaults" checkbox.
 - ✅ **Recent-calculations debug log** (v0.3.2) — opt-in 50-entry ring buffer captures every cart calculation (cache-hit / engine-call / error) with timing, ZIP, category, amount, tax. Viewable via `wp opensalestax recent-calcs` or a panel on the settings page. Useful when troubleshooting "why is this tax wrong?"

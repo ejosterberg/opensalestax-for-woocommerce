@@ -104,4 +104,48 @@ final class CacheTest extends TestCase
         $cache->set('55401|general|10000', ['opensalestax' => 1.0], 120);
         $this->addToAssertionCount(1);
     }
+
+    /**
+     * Regression test for the v0.1.1–v0.3.1 silent-cache-degradation bug.
+     *
+     * The placeholder rate id is a numeric string like "2", but PHP coerces
+     * numeric-string array keys to int when an array is constructed with
+     * `[$key => $val]`. So when set() persisted `['2' => 9.025]`, the
+     * transient layer round-tripped it back as `[2 => 9.025]` (int key).
+     *
+     * The original Cache::get() validator rejected entries where any key
+     * wasn't `is_string()`, so it returned null on every hit. The cache
+     * silently degraded to "no caching" — every cart calc hit the engine.
+     *
+     * v0.3.2 fixed this by stringifying keys on read. This test pins that
+     * behavior so a future refactor can't reintroduce the bug.
+     */
+    public function testGetAcceptsNumericKeysFromTransientLayer(): void
+    {
+        // Simulate what the transient layer actually returns: int keys
+        // (because PHP coerced the numeric-string at array-construction time).
+        WP_Mock::userFunction('get_transient', [
+            'times' => 1,
+            'return' => [2 => 9.025],
+        ]);
+
+        $cache = new Cache();
+        $hit = $cache->get('55401|general|10000');
+
+        self::assertNotNull($hit, 'numeric-string keys must NOT cause a cache miss');
+        self::assertArrayHasKey('2', $hit);
+        self::assertSame(9.025, $hit['2']);
+    }
+
+    public function testGetRejectsNonScalarValues(): void
+    {
+        // Sanity: arrays/objects as values still get rejected as corrupt.
+        WP_Mock::userFunction('get_transient', [
+            'times' => 1,
+            'return' => ['opensalestax' => ['nested' => 'array']],
+        ]);
+
+        $cache = new Cache();
+        self::assertNull($cache->get('55401|general|10000'));
+    }
 }

@@ -63,6 +63,7 @@ final class Plugin
         $breakdown = new OrderTaxBreakdown($clientFactory);
         $dashboard = new DashboardWidget($clientFactory);
         $subscriptions = new SubscriptionsBridge($breakdown);
+        $healthNotice = new EngineHealthNotice($clientFactory);
 
         $taxHandler->register();
         $settings->register();
@@ -70,6 +71,7 @@ final class Plugin
         $breakdown->register();
         $dashboard->register();
         $subscriptions->register();
+        $healthNotice->register();
 
         // Register WP-CLI subcommands. We register each method explicitly so
         // the dashed subcommand naming (`test-connection`, `cache-flush`,

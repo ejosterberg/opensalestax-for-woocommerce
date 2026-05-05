@@ -6,7 +6,7 @@ Tested up to: 6.9
 Requires PHP: 8.2
 WC requires at least: 8.2
 WC tested up to: 10.5
-Stable tag: 0.4.0
+Stable tag: 0.4.1
 License: Apache License 2.0
 License URI: https://www.apache.org/licenses/LICENSE-2.0
 
@@ -79,6 +79,13 @@ The plugin is filter-only — it doesn't write to `wp_woocommerce_tax_rates`. Lo
 Tax calculations are provided as-is for convenience. The merchant is solely responsible for tax-collection accuracy and remittance to the appropriate jurisdictions. Verify against your state Department of Revenue before remitting.
 
 == Changelog ==
+
+= 0.4.1 — 2026-05-05 =
+
+* Refund handling. When you issue a refund (full or partial), the refund order's admin page now shows a prorated per-jurisdiction tax breakdown — same audit table as a regular order, with negative values. Math: parent order's stored breakdown × (refund_total / parent_total) × -1.
+* Engine-unreachable admin notice. When the OpenSalesTax engine is down or misconfigured, every WP-admin page shows a red banner telling you so (capability-gated to manage_woocommerce). Closes the silent-failure gap where merchants could collect wrong tax for days without realizing the engine had been unreachable.
+* Regression test for the v0.1.1–v0.3.1 cache bug. Pins the v0.3.2 fix that allows numeric-string array keys to round-trip correctly through the WP transient layer. A future "cleanup" can't reintroduce the bug without breaking the test.
+* 11 new unit tests; 109 unit tests total.
 
 = 0.4.0 — 2026-05-05 =
 

@@ -228,6 +228,84 @@ final class OrderTaxBreakdownTest extends TestCase
         self::assertSame('', $html);
     }
 
+    public function testRefundCaptureProratesParentBreakdown(): void
+    {
+        $parentBreakdown = [
+            'subtotal' => '100.00',
+            'tax_total' => '9.0250',
+            'lines' => [
+                [
+                    'category' => 'general',
+                    'amount' => '100.00',
+                    'tax' => '9.0250',
+                    'note' => null,
+                    'jurisdictions' => [
+                        ['type' => 'state', 'name' => 'Minnesota', 'rate_pct' => '6.875', 'tax' => '6.8750'],
+                        ['type' => 'city', 'name' => 'Minneapolis', 'rate_pct' => '0.500', 'tax' => '0.5000'],
+                    ],
+                ],
+            ],
+        ];
+
+        // Refund is for $50 of a $109.025 parent total — ratio ≈ 0.4587.
+        $parent = $this->stubRefundParent(json_encode($parentBreakdown), 109.025);
+        $refund = $this->stubRefund(50.0, 999);
+
+        $this->mockWcGetOrder([
+            999 => $parent,
+            555 => $refund,
+        ]);
+
+        $breakdown = new OrderTaxBreakdown($this->factoryThatShouldNotBeCalled());
+        $breakdown->captureOnRefundCreate(555, []);
+
+        self::assertNotNull($refund->captured);
+        $stored = json_decode($refund->captured, true);
+        self::assertIsArray($stored);
+        // Refund tax_total should be NEGATIVE and proportional.
+        self::assertLessThan(0, (float) $stored['tax_total']);
+        // -9.025 * (50 / 109.025) ≈ -4.14
+        self::assertEqualsWithDelta(-4.14, (float) $stored['tax_total'], 0.05);
+        // Per-jurisdiction values should also be negative + proportional.
+        self::assertLessThan(0, (float) $stored['lines'][0]['jurisdictions'][0]['tax']);
+        // The note should mention the parent order.
+        self::assertStringContainsString('Prorated from parent order #999', $stored['lines'][0]['note']);
+    }
+
+    public function testRefundCaptureNoOpWhenParentHasNoBreakdown(): void
+    {
+        // Parent order has no stored breakdown (pre-v0.3.0 order).
+        $parent = $this->stubRefundParent('', 109.025);
+        $refund = $this->stubRefund(50.0, 999);
+
+        $this->mockWcGetOrder([
+            999 => $parent,
+            555 => $refund,
+        ]);
+
+        $breakdown = new OrderTaxBreakdown($this->factoryThatShouldNotBeCalled());
+        $breakdown->captureOnRefundCreate(555, []);
+
+        self::assertNull($refund->captured);
+    }
+
+    public function testRefundCaptureSkipsWhenParentTotalIsZero(): void
+    {
+        $parentBreakdown = ['subtotal' => '0.00', 'tax_total' => '0.0000', 'lines' => []];
+        $parent = $this->stubRefundParent(json_encode($parentBreakdown), 0.0);
+        $refund = $this->stubRefund(0.0, 999);
+
+        $this->mockWcGetOrder([
+            999 => $parent,
+            555 => $refund,
+        ]);
+
+        $breakdown = new OrderTaxBreakdown($this->factoryThatShouldNotBeCalled());
+        $breakdown->captureOnRefundCreate(555, []);
+
+        self::assertNull($refund->captured);
+    }
+
     public function testRenderHtmlEscapesUserContent(): void
     {
         // WP_Mock's default esc_html / esc_html__ are pass-through, which would
@@ -328,6 +406,81 @@ final class OrderTaxBreakdownTest extends TestCase
                 return $key === OrderTaxBreakdown::META_KEY ? $this->metaValue : '';
             }
         };
+    }
+
+    /**
+     * Stub a parent order: returns the given JSON breakdown via get_meta and
+     * the given numeric total via get_total. Used by the refund-prorating
+     * tests.
+     */
+    private function stubRefundParent(string $metaValue, float $total)
+    {
+        return new class ($metaValue, $total) {
+            public function __construct(
+                private readonly string $metaValue,
+                private readonly float $total,
+            ) {
+            }
+            public function get_meta(string $key, bool $single = true): string
+            {
+                return $key === OrderTaxBreakdown::META_KEY ? $this->metaValue : '';
+            }
+            public function get_total(): float
+            {
+                return $this->total;
+            }
+        };
+    }
+
+    /**
+     * Stub a refund object: WC_Order_Refund-shaped. The `captured` public
+     * property records whatever JSON was passed to update_meta_data so the
+     * test can assert on it.
+     */
+    private function stubRefund(float $refundTotal, int $parentId)
+    {
+        return new class ($refundTotal, $parentId) {
+            public ?string $captured = null;
+            public function __construct(
+                private readonly float $refundTotal,
+                private readonly int $parentId,
+            ) {
+            }
+            public function get_total(): float
+            {
+                return -$this->refundTotal; // WC stores refund totals as negative
+            }
+            public function get_parent_id(): int
+            {
+                return $this->parentId;
+            }
+            public function update_meta_data(string $key, string $value): void
+            {
+                if ($key === OrderTaxBreakdown::META_KEY) {
+                    $this->captured = $value;
+                }
+            }
+            public function save(): void
+            {
+            }
+        };
+    }
+
+    /**
+     * Wire up `wc_get_order` to a static lookup table so the refund handler's
+     * `wc_get_order($refundId)` and `wc_get_order($parentId)` calls return
+     * our stubs.
+     *
+     * @param array<int, object> $idToOrder
+     */
+    private function mockWcGetOrder(array $idToOrder): void
+    {
+        WP_Mock::userFunction('wc_get_order', [
+            'return' => function ($id) use ($idToOrder) {
+                $key = (int) $id;
+                return $idToOrder[$key] ?? false;
+            },
+        ]);
     }
 
     /**
