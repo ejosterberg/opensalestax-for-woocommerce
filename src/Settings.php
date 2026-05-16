@@ -1,6 +1,6 @@
 <?php
 
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 
 declare(strict_types=1);
 
@@ -194,13 +194,14 @@ final class Settings
 
                 echo '<tr>';
                 echo '<td><code>' . esc_html((string) $label) . '</code></td>';
-                echo '<td><select name="' . $fieldName . '" style="min-width:220px;">';
-                // Skip option = empty string.
-                $skipSelected = $current === TaxClassMap::SKIP_CATEGORY ? ' selected' : '';
-                echo '<option value=""' . $skipSelected . '>' . esc_html__('— Skip (non-taxable) —', 'opensalestax-woocommerce') . '</option>';
+                echo '<td><select name="' . esc_attr($fieldName) . '" style="min-width:220px;">';
+                // Skip option = empty string. Build the selected attribute as a
+                // discrete string we can pass through esc_attr().
+                $skipSelected = $current === TaxClassMap::SKIP_CATEGORY ? 'selected' : '';
+                echo '<option value="" ' . esc_attr($skipSelected) . '>' . esc_html__('— Skip (non-taxable) —', 'opensalestax-woocommerce') . '</option>';
                 foreach (TaxClassMap::VALID_CATEGORIES as $cat) {
-                    $sel = $current === $cat ? ' selected' : '';
-                    echo '<option value="' . esc_attr($cat) . '"' . $sel . '>' . esc_html($cat) . '</option>';
+                    $sel = $current === $cat ? 'selected' : '';
+                    echo '<option value="' . esc_attr($cat) . '" ' . esc_attr($sel) . '>' . esc_html($cat) . '</option>';
                 }
                 echo '</select></td>';
                 echo '<td>';
@@ -233,8 +234,29 @@ final class Settings
             return;
         }
 
+        // This handler fires on `woocommerce_update_options_tax_<section>`,
+        // which WC only triggers after verifying its own
+        // `woocommerce-settings` nonce. Re-verify defensively here so
+        // Plugin Check's nonce scanner is satisfied and so the handler is
+        // safe even if a future WC release moves the verification.
+        $rawNonce = '';
+        if (isset($_REQUEST['_wpnonce']) && is_string($_REQUEST['_wpnonce'])) {
+            // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitize_text_field is the next call.
+            $unslashed = wp_unslash($_REQUEST['_wpnonce']);
+            $rawNonce = is_string($unslashed) ? sanitize_text_field($unslashed) : '';
+        }
+        if (!wp_verify_nonce($rawNonce, 'woocommerce-settings')) {
+            return;
+        }
+
         // Honor the "Reset all" checkbox first.
-        if (isset($_POST['opensalestax_tax_class_map_reset']) && $_POST['opensalestax_tax_class_map_reset'] === '1') {
+        $resetFlag = '';
+        if (isset($_POST['opensalestax_tax_class_map_reset']) && is_string($_POST['opensalestax_tax_class_map_reset'])) {
+            // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitize_text_field is the next call.
+            $unslashed = wp_unslash($_POST['opensalestax_tax_class_map_reset']);
+            $resetFlag = is_string($unslashed) ? sanitize_text_field($unslashed) : '';
+        }
+        if ($resetFlag === '1') {
             TaxClassMap::reset();
             return;
         }
@@ -243,21 +265,28 @@ final class Settings
             return;
         }
 
-        $posted = wp_unslash($_POST['opensalestax_tax_class_map']);
-        if (!is_array($posted)) {
+        // Sanitize the raw $_POST array: unslash and walk every key/value
+        // through sanitize_text_field() before any business logic touches it.
+        // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- each entry is sanitize_text_field()'d in the foreach below.
+        $rawPosted = wp_unslash($_POST['opensalestax_tax_class_map']);
+        if (!is_array($rawPosted)) {
             return;
+        }
+        $posted = [];
+        foreach ($rawPosted as $k => $v) {
+            $sk = is_string($k) ? sanitize_text_field($k) : '';
+            $sv = is_string($v) ? sanitize_text_field($v) : '';
+            if ($sk !== '' || $k === '') {
+                // Preserve empty string key (WC's standard tax class) but
+                // drop non-string keys outright.
+                $posted[$sk] = $sv;
+            }
         }
 
         // Build the new custom-map atomically so we don't end up half-applied
         // if one entry has an invalid value. Validate each first.
         $validated = [];
         foreach ($posted as $slug => $cat) {
-            if (!is_string($slug)) {
-                continue;
-            }
-            $slug = sanitize_text_field($slug);
-            $cat = is_string($cat) ? sanitize_text_field($cat) : '';
-
             // Skip values are valid (empty string).
             if ($cat !== TaxClassMap::SKIP_CATEGORY && !in_array($cat, TaxClassMap::VALID_CATEGORIES, true)) {
                 continue; // Silently drop invalid; the dropdown shouldn't produce bad values.
@@ -384,34 +413,34 @@ final class Settings
         // separate JS file for ~20 lines.
         $ajaxUrl = admin_url('admin-ajax.php');
         $nonce = wp_create_nonce('opensalestax_test_connection');
-        $js = <<<JS
-(function() {
-    const btn = document.getElementById('opensalestax-test-connection');
-    if (!btn) return;
-    btn.addEventListener('click', async function() {
-        const result = document.getElementById('opensalestax-test-result');
-        result.textContent = 'Testing…';
-        try {
-            const resp = await fetch({$this->jsonEncode($ajaxUrl)}, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'action=opensalestax_test_connection&_nonce={$nonce}',
-            });
-            const data = await resp.json();
-            if (data && data.ok) {
-                result.textContent = '✓ ' + (data.message || 'OK');
-                result.style.color = 'green';
-            } else {
-                result.textContent = '✗ ' + (data && data.error ? data.error : 'Unknown error');
-                result.style.color = '#d63638';
-            }
-        } catch (e) {
-            result.textContent = '✗ ' + e.message;
-            result.style.color = '#d63638';
-        }
-    });
-})();
-JS;
+        // Built as a standard concatenated string (no heredoc) per WP-org
+        // Plugin Check policy.
+        $js = "(function() {\n"
+            . "    const btn = document.getElementById('opensalestax-test-connection');\n"
+            . "    if (!btn) return;\n"
+            . "    btn.addEventListener('click', async function() {\n"
+            . "        const result = document.getElementById('opensalestax-test-result');\n"
+            . "        result.textContent = 'Testing\xE2\x80\xA6';\n"
+            . "        try {\n"
+            . '            const resp = await fetch(' . $this->jsonEncode($ajaxUrl) . ", {\n"
+            . "                method: 'POST',\n"
+            . "                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },\n"
+            . "                body: 'action=opensalestax_test_connection&_nonce=" . esc_js($nonce) . "',\n"
+            . "            });\n"
+            . "            const data = await resp.json();\n"
+            . "            if (data && data.ok) {\n"
+            . "                result.textContent = '\xE2\x9C\x93 ' + (data.message || 'OK');\n"
+            . "                result.style.color = 'green';\n"
+            . "            } else {\n"
+            . "                result.textContent = '\xE2\x9C\x97 ' + (data && data.error ? data.error : 'Unknown error');\n"
+            . "                result.style.color = '#d63638';\n"
+            . "            }\n"
+            . "        } catch (e) {\n"
+            . "            result.textContent = '\xE2\x9C\x97 ' + e.message;\n"
+            . "            result.style.color = '#d63638';\n"
+            . "        }\n"
+            . "    });\n"
+            . "})();\n";
         wp_register_script('opensalestax-admin', '', [], '0.1.0', true);
         wp_enqueue_script('opensalestax-admin');
         wp_add_inline_script('opensalestax-admin', $js);

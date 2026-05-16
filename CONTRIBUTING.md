@@ -12,9 +12,23 @@ CI enforces this on every PR. See https://developercertificate.org for the full 
 
 ## License
 
-By contributing you agree your contribution is licensed under Apache 2.0 (the project's LICENSE). Apache 2.0 is GPLv2-compatible and approved for the WordPress.org plugin directory.
+This plugin is **dual-licensed** — recipients may use it under
+either:
 
-Every source file must carry an `SPDX-License-Identifier: Apache-2.0` header.
+* [Apache License 2.0](LICENSE-APACHE.txt), OR
+* [GNU GPL version 2 or later](LICENSE-GPL.txt)
+
+See [`LICENSE`](LICENSE) for the SPDX declaration and rationale
+(the dual licensing exists primarily for WordPress.org plugin
+directory compatibility and to keep the OpenSalesTax portfolio's
+licensing footprint consistent across ecosystems).
+
+By contributing you agree your contribution is licensed under
+**both** options — the recipient picks. This is the same pattern
+the Odoo connector uses (LGPL/AGPL).
+
+Every source file must carry an
+`SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later` header.
 
 ## Dev install
 

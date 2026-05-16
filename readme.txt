@@ -1,14 +1,14 @@
 === OpenSalesTax for WooCommerce ===
 Contributors: ejosterberg
-Tags: tax, sales-tax, woocommerce, taxjar, avalara, stripe-tax, ecommerce, us-tax, destination-based-tax, nexus, tax-calculation, multi-jurisdiction
+Tags: tax, sales-tax, us-tax, taxjar, avalara
 Requires at least: 6.2
 Tested up to: 6.9
 Requires PHP: 8.2
 WC requires at least: 8.2
 WC tested up to: 10.7
-Stable tag: 0.5.0
-License: Apache License 2.0
-License URI: https://www.apache.org/licenses/LICENSE-2.0
+Stable tag: 0.5.1
+License: GPLv2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
 Replace TaxJar / Avalara / WooCommerce Tax with self-hosted OpenSalesTax. Free, open-source US sales-tax calculation at WooCommerce checkout.
 
@@ -45,7 +45,7 @@ If you only have sales-tax nexus in some states, enable the **Per-state nexus fi
 
 * Not a tax-filing service — calculation only. The merchant remits.
 * Not the engine itself — see [OpenSalesTax](https://github.com/ejosterberg/open-sales-tax) for the calculator.
-* Not a closed/proprietary integration — fully open-source, Apache 2.0 licensed.
+* Not a closed/proprietary integration — fully open-source, dual-licensed Apache-2.0 OR GPL-2.0-or-later (your choice).
 
 == Installation ==
 
@@ -94,6 +94,14 @@ The plugin is filter-only — it doesn't write to `wp_woocommerce_tax_rates`. Lo
 Tax calculations are provided as-is for convenience. The merchant is solely responsible for tax-collection accuracy and remittance to the appropriate jurisdictions. Verify against your state Department of Revenue before remitting.
 
 == Changelog ==
+
+= 0.5.1 — 2026-05-15 =
+
+* Dual-licensed Apache-2.0 OR GPL-2.0-or-later (was Apache-2.0 only). New top-level LICENSE file declares the dual arrangement; full Apache and GPL texts in LICENSE-APACHE.txt and LICENSE-GPL.txt. Plugin header + readme.txt declare "GPLv2 or later" for WordPress.org compatibility; the LICENSE file describes both options.
+* WordPress.org Plugin Check pre-submission pass: every output of composed HTML is now passed through wp_kses_post; settings page selects use esc_attr on every attribute; CLI fallback output is esc_html'd; UrlValidator uses wp_parse_url; every error_log() replaced with WC's wc_get_logger()->warning(); Settings save handler now verifies the woocommerce-settings nonce defensively and sanitize_text_field's every $_POST value; main plugin file wraps its autoload bootstrap in an IIFE to keep $autoload out of the global namespace.
+* readme.txt tags trimmed to the WP-org-allowed five (tax, sales-tax, us-tax, taxjar, avalara); WC tested up to bumped 10.5 → 10.7.
+* One trademark-policy warning remains (plugin-slug rename "opensalestax-woocommerce" → "opensalestax-for-woocommerce" required by WP-org); deferred to v0.6 because the rename touches the repository name + every text-domain reference.
+* 115 unit tests green (+1 vs. v0.5.0); PHPStan max + PHP-CS-Fixer + composer audit all clean.
 
 = 0.5.0 — 2026-05-15 =
 

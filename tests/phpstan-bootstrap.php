@@ -1,6 +1,6 @@
 <?php
 
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 
 declare(strict_types=1);
 
@@ -209,6 +209,44 @@ if (!function_exists('wp_add_inline_script')) {
     function wp_add_inline_script(string $handle, string $data, string $position = 'after'): bool
     {
         return true;
+    }
+}
+if (!function_exists('wp_kses_post')) {
+    function wp_kses_post(string $data): string
+    {
+        return $data;
+    }
+}
+if (!function_exists('wp_parse_url')) {
+    function wp_parse_url(string $url, int $component = -1): array|string|int|null|false
+    {
+        return parse_url($url, $component);
+    }
+}
+if (!function_exists('esc_js')) {
+    function esc_js(string $text): string
+    {
+        return $text;
+    }
+}
+if (!class_exists('WC_Logger_Interface')) {
+    interface WC_Logger_Interface
+    {
+        public function warning(string $msg, array $context = []): void;
+        public function error(string $msg, array $context = []): void;
+    }
+}
+if (!function_exists('wc_get_logger')) {
+    function wc_get_logger(): WC_Logger_Interface
+    {
+        return new class () implements WC_Logger_Interface {
+            public function warning(string $msg, array $context = []): void
+            {
+            }
+            public function error(string $msg, array $context = []): void
+            {
+            }
+        };
     }
 }
 

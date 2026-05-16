@@ -1,6 +1,6 @@
 <?php
 
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 
 declare(strict_types=1);
 
@@ -121,7 +121,7 @@ final class TaxHandler
                 ],
             );
         } catch (OpenSalesTaxException $e) {
-            error_log('[opensalestax-woocommerce] calculate failed: ' . $e->getMessage());
+            self::logWarning('calculate failed: ' . $e->getMessage());
             CalculationLog::record(
                 source: CalculationLog::SOURCE_ERROR,
                 zip5: $zip5,
@@ -133,7 +133,7 @@ final class TaxHandler
             );
             return $this->fallbackOnError();
         } catch (\Throwable $e) {
-            error_log('[opensalestax-woocommerce] unexpected calculate error: ' . get_class($e) . ': ' . $e->getMessage());
+            self::logWarning('unexpected calculate error: ' . get_class($e) . ': ' . $e->getMessage());
             CalculationLog::record(
                 source: CalculationLog::SOURCE_ERROR,
                 zip5: $zip5,
@@ -350,5 +350,19 @@ final class TaxHandler
             return [];
         }
         return [$this->resolveRateKey() => 0.0];
+    }
+
+    /**
+     * Log a warning through WC's logger when available; fall back to PHP's
+     * error_log when WC isn't loaded (unit-test contexts).
+     */
+    private static function logWarning(string $msg): void
+    {
+        if (function_exists('wc_get_logger')) {
+            wc_get_logger()->warning('[opensalestax-woocommerce] ' . $msg, ['source' => 'opensalestax-woocommerce']);
+            return;
+        }
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        error_log('[opensalestax-woocommerce] ' . $msg);
     }
 }

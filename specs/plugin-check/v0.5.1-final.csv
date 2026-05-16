@@ -1,0 +1,7 @@
+PHP Warning:  chdir(): Permission denied (errno 13) in /var/www/html/wp-content/plugins/plugin-check/vendor/squizlabs/php_codesniffer/src/Ruleset.php on line 774
+Warning: chdir(): Permission denied (errno 13) in /var/www/html/wp-content/plugins/plugin-check/vendor/squizlabs/php_codesniffer/src/Ruleset.php on line 774
+FILE: opensalestax-woocommerce.php
+line,column,type,code,message,docs
+0,0,WARNING,trademarked_term,"The plugin slug includes a restricted term. Your plugin slug - ""opensalestax-woocommerce"" - contains the restricted term ""woocommerce"" which cannot be used within in your plugin slug, unless your plugin slug contains one of the allowed patterns: ""for woocommerce"", ""with woocommerce"", ""using woocommerce"", or ""and woocommerce"". The term must still not appear anywhere else in your plugin slug.",
+
+

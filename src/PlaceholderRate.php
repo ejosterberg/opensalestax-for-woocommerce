@@ -1,6 +1,6 @@
 <?php
 
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 
 declare(strict_types=1);
 
@@ -43,6 +43,12 @@ final class PlaceholderRate
         }
 
         global $wpdb;
+        // Direct INSERT into wp_woocommerce_tax_rates is the only sane way
+        // to ensure WC's `woocommerce_calc_tax` filter fires for our rate
+        // rows. No WC API exposes this. There is no read-side cache to
+        // bust — the row is referenced by tax_rate_id, not name, after
+        // creation.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.DirectDatabaseQuery.SchemaChange
         $wpdb->insert(
             $wpdb->prefix . 'woocommerce_tax_rates',
             [
@@ -70,11 +76,15 @@ final class PlaceholderRate
     public static function getRateId(): ?int
     {
         global $wpdb;
-        $sql = $wpdb->prepare(
+        // Table name is interpolated from $wpdb->prefix (a controlled value
+        // — not user-supplied) which cannot be passed via $wpdb->prepare's
+        // placeholders. The rate-name parameter IS bound through prepare().
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared
+        $rateId = $wpdb->get_var($wpdb->prepare(
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
             "SELECT tax_rate_id FROM {$wpdb->prefix}woocommerce_tax_rates WHERE tax_rate_name = %s LIMIT 1",
             self::RATE_NAME,
-        );
-        $rateId = $wpdb->get_var($sql);
+        ));
         if ($rateId === null) {
             return null;
         }
@@ -90,6 +100,8 @@ final class PlaceholderRate
     public static function remove(): void
     {
         global $wpdb;
+        // Direct DELETE — same rationale as ensure() above.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
         $wpdb->delete(
             $wpdb->prefix . 'woocommerce_tax_rates',
             ['tax_rate_name' => self::RATE_NAME],

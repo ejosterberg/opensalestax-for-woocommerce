@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 //
 // One-shot capture of WP-org screenshots for the OpenSalesTax for
 // WooCommerce plugin. Run from the captain workstation against the

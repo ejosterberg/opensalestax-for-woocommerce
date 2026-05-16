@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 //
 // Verify the FAQ claim that the plugin works through the WC Cart/Checkout
 // Blocks (React-driven) flow. Drives a real product purchase as a guest

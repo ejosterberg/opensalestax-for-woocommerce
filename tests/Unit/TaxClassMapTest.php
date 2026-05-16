@@ -1,6 +1,6 @@
 <?php
 
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 
 declare(strict_types=1);
 
@@ -158,6 +158,10 @@ final class TaxClassMapTest extends TestCase
 
     public function testSetWithInvalidCategoryThrows(): void
     {
+        // esc_html() is called defensively on the user-supplied category in
+        // the exception message; stub it pass-through for the test.
+        WP_Mock::userFunction('esc_html', ['return_arg' => 0]);
+
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessageMatches('/Invalid OST category/');
 

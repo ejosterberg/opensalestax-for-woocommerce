@@ -1,6 +1,6 @@
 <?php
 
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 
 declare(strict_types=1);
 
@@ -91,9 +91,11 @@ final class TaxClassMap
     public static function set(string $wcClassSlug, string $ostCategory): void
     {
         if ($ostCategory !== self::SKIP_CATEGORY && !in_array($ostCategory, self::VALID_CATEGORIES, true)) {
+            // Escape the user-supplied value defensively; the exception
+            // message may be surfaced through WP-CLI or WP admin notices.
             throw new \InvalidArgumentException(
-                "Invalid OST category: '{$ostCategory}'. Valid: "
-                    . implode(', ', self::VALID_CATEGORIES)
+                "Invalid OST category: '" . esc_html($ostCategory) . "'. Valid: "
+                    . esc_html(implode(', ', self::VALID_CATEGORIES))
                     . ", or '' to skip (non-taxable).",
             );
         }

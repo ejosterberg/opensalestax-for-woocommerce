@@ -6,6 +6,33 @@ Versioning: [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-05-15
+
+### Changed
+
+- **Dual-licensed under `Apache-2.0 OR GPL-2.0-or-later`.** Previously Apache-2.0 only. New top-level `LICENSE` declares the dual arrangement; full Apache and GPL texts now live in `LICENSE-APACHE.txt` and `LICENSE-GPL.txt` respectively. Every PHP source file's SPDX header was updated to `Apache-2.0 OR GPL-2.0-or-later`. `composer.json`'s `license` field is now an array of both. Plugin header + `readme.txt` declare `GPLv2 or later` for WordPress.org plugin-directory compatibility (the recipient picks; the LICENSE file describes both options). Mirrors the Odoo connector's LGPL/AGPL pattern — pre-empts the WP-org reviewer's "GPL compatible?" challenge.
+
+### Fixed (WordPress.org Plugin Check pre-submission)
+
+- **i18n / escaping**: every output of composed HTML (`DashboardWidget::render`, `OrderTaxBreakdown::renderOrderDetails`) now passes through `wp_kses_post()`. Settings page table-cell renders use `esc_attr()` on every attribute value. CLI fallback (non-WP-CLI) terminal output passes through `esc_html()`.
+- **i18n / exceptions**: `TaxClassMap::set()` now `esc_html()`'s the user-supplied OST category in the `InvalidArgumentException` message (it may surface in admin notices or CLI output).
+- **input sanitization**: `Settings::saveTaxClassMap` (now explicitly verifies `woocommerce-settings` nonce + unslashes / `sanitize_text_field()`s each `$_REQUEST` / `$_POST` value defensively) and `ConnectionTester::handle` (same pattern for the AJAX `_nonce`). Added `testSaveRejectsBadNonce` test.
+- **logging**: every `error_log()` call replaced with WC's standard logger via a `logWarning()` helper (`wc_get_logger()->warning('...', ['source' => 'opensalestax-woocommerce'])`); falls back to `error_log()` when WC isn't loaded (unit-test contexts).
+- **URL parsing**: `UrlValidator` now uses `wp_parse_url()` instead of bare `parse_url()`.
+- **SQL annotations**: every direct `$wpdb` query (placeholder-rate row management, cache flush, dashboard widget aggregate) now carries a `phpcs:ignore` comment explaining the controlled-input table-name interpolation pattern and why no `wp_cache_*` layer applies. All actually-user-supplied values bind through `$wpdb->prepare()`.
+- **plugin header**: main file now wraps the autoload bootstrap in an IIFE so the `$autoload` local doesn't pollute the global namespace; `WC tested up to` bumped 10.5 → 10.7 to match `readme.txt`.
+- **readme**: `Tags:` trimmed to the WP-org-allowed five (`tax, sales-tax, us-tax, taxjar, avalara`); `License:` simplified to `GPLv2 or later` to match the plugin file header (the dual-license declaration lives in the `LICENSE` file).
+- **heredoc → string-concat**: `Settings::enqueueAdminAssets` rebuilt its inline JS snippet without the heredoc syntax that WP-org's Plugin Check rejects.
+
+### Verified
+
+- Plugin Check (WP-CLI mode, run on VM 907 against the deployed copy) reports **0 errors**. One `trademarked_term` WARNING remains (see *Known caveats*).
+- 115 unit tests green (+1 vs. v0.5.0 — the new bad-nonce rejection test); PHPStan max + PHP-CS-Fixer dry-run + composer audit all clean.
+
+### Known caveats (to address before WP-org submission lands)
+
+- **Plugin slug rename: `opensalestax-woocommerce` → `opensalestax-for-woocommerce`** is required by WP-org's trademark policy (the bare "woocommerce" term in the slug is restricted unless paired with one of the allowed prefixes: `for woocommerce`, `with woocommerce`, `using woocommerce`, `and woocommerce`). Plugin Check flags this as a WARNING; the WP-org reviewer will treat it as a hard reject. Deferred from v0.5.1 because the rename touches the repository name, deployment paths, text domain, and every `__()` / `_e()` call — best handled as its own dedicated minor (e.g. v0.6.0).
+
 ## [0.5.0] — 2026-05-15
 
 ### Added

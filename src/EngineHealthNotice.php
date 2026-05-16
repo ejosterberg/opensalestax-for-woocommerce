@@ -1,6 +1,6 @@
 <?php
 
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 
 declare(strict_types=1);
 
@@ -120,11 +120,11 @@ final class EngineHealthNotice
         try {
             $health = $client->health();
         } catch (OpenSalesTaxException $e) {
-            error_log('[opensalestax-woocommerce] admin-notice probe failed: ' . $e->getMessage());
+            self::logWarning('admin-notice probe failed: ' . $e->getMessage());
             set_transient(self::FAILURE_MARKER, '1', self::PROBE_TTL);
             return false;
         } catch (\Throwable $e) {
-            error_log('[opensalestax-woocommerce] admin-notice probe unexpected: ' . get_class($e) . ': ' . $e->getMessage());
+            self::logWarning('admin-notice probe unexpected: ' . get_class($e) . ': ' . $e->getMessage());
             set_transient(self::FAILURE_MARKER, '1', self::PROBE_TTL);
             return false;
         }
@@ -138,5 +138,19 @@ final class EngineHealthNotice
     {
         $url = get_option('opensalestax_base_url', '');
         return is_string($url) && trim($url) !== '';
+    }
+
+    /**
+     * Log a warning through WC's logger when available; fall back to PHP's
+     * error_log when WC isn't loaded (unit-test contexts).
+     */
+    private static function logWarning(string $msg): void
+    {
+        if (function_exists('wc_get_logger')) {
+            wc_get_logger()->warning('[opensalestax-woocommerce] ' . $msg, ['source' => 'opensalestax-woocommerce']);
+            return;
+        }
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        error_log('[opensalestax-woocommerce] ' . $msg);
     }
 }

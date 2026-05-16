@@ -2,7 +2,7 @@
 
 > Replace TaxJar / Avalara / WooCommerce Tax with self-hosted [OpenSalesTax](https://github.com/ejosterberg/open-sales-tax). Free, open-source, US sales-tax calculation at WooCommerce checkout.
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE) [![PHP](https://img.shields.io/badge/php-%E2%89%A58.2-777bb4)](composer.json) [![WordPress](https://img.shields.io/badge/wordpress-%E2%89%A56.2-21759b)](readme.txt) [![WooCommerce](https://img.shields.io/badge/woocommerce-%E2%89%A58.2-96588a)](readme.txt)
+[![License](https://img.shields.io/badge/license-Apache%202.0%20OR%20GPL%202.0%2B-blue)](LICENSE) [![PHP](https://img.shields.io/badge/php-%E2%89%A58.2-777bb4)](composer.json) [![WordPress](https://img.shields.io/badge/wordpress-%E2%89%A56.2-21759b)](readme.txt) [![WooCommerce](https://img.shields.io/badge/woocommerce-%E2%89%A58.2-96588a)](readme.txt)
 
 **Status:** v0.4.1. Tested against WordPress 6.6+ / WooCommerce 10.7 / OpenSalesTax engine v0.39. 109 unit tests + an end-to-end integration test on a real WP+WooCom Proxmox VM.
 
@@ -124,4 +124,9 @@ DCO sign-off (`git commit -s`) required on every commit. See [CONTRIBUTING.md](C
 
 ## License
 
-[Apache 2.0](LICENSE).
+Dual-licensed: **Apache-2.0 OR GPL-2.0-or-later** — recipient
+picks. See [`LICENSE`](LICENSE), [`LICENSE-APACHE.txt`](LICENSE-APACHE.txt),
+and [`LICENSE-GPL.txt`](LICENSE-GPL.txt). The GPL-2.0-or-later
+option exists primarily for WordPress.org plugin directory
+compatibility; most merchants embedding the plugin in their own
+WooCommerce deployment will be served by the Apache-2.0 option.

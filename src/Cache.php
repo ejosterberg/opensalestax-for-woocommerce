@@ -1,6 +1,6 @@
 <?php
 
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 
 declare(strict_types=1);
 
@@ -70,8 +70,12 @@ final class Cache
         }
         $like = '_transient_' . self::KEY_PREFIX . '%';
         $timeout = '_transient_timeout_' . self::KEY_PREFIX . '%';
-        // @phpstan-ignore-next-line — $wpdb is dynamic via WP, safe via prepare()
-        $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s", $like, $timeout));
+        // Direct DELETE is the only sane way to bulk-flush transients by a
+        // common prefix — WP exposes no API for this. The options-table
+        // name is interpolated from a controlled $wpdb property. Both LIKE
+        // values are bound through prepare(). No write-side cache to bust.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared
+        $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s", $like, $timeout)); // @phpstan-ignore-line
     }
 
     private function makeKey(string $payloadKey): string

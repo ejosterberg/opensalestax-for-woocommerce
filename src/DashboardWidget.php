@@ -1,6 +1,6 @@
 <?php
 
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 
 declare(strict_types=1);
 
@@ -56,7 +56,11 @@ final class DashboardWidget
 
     public function render(): void
     {
-        echo $this->renderHtml();
+        // renderHtml() builds the markup from individually esc_html() /
+        // esc_attr() / esc_url() escaped pieces. wp_kses_post() is the
+        // belt-and-suspenders pass that Plugin Check expects on echo of
+        // a composed-HTML string.
+        echo wp_kses_post($this->renderHtml());
     }
 
     /**
@@ -187,10 +191,10 @@ final class DashboardWidget
         try {
             $health = $client->health();
         } catch (OpenSalesTaxException $e) {
-            error_log('[opensalestax-woocommerce] dashboard health probe failed: ' . $e->getMessage());
+            self::logWarning('dashboard health probe failed: ' . $e->getMessage());
             return null;
         } catch (\Throwable $e) {
-            error_log('[opensalestax-woocommerce] dashboard health probe unexpected: ' . get_class($e) . ': ' . $e->getMessage());
+            self::logWarning('dashboard health probe unexpected: ' . get_class($e) . ': ' . $e->getMessage());
             return null;
         }
 
@@ -217,27 +221,38 @@ final class DashboardWidget
         $todayStart = gmdate('Y-m-d H:i:s', $midnight !== false ? $midnight : time());
 
         // Try HPOS first (wp_wc_orders + wp_wc_orders_meta), fall back to legacy CPT.
+        // Table names are interpolated from $wpdb->prefix (a controlled
+        // value); they cannot be parameterized via $wpdb->prepare(). All
+        // user-controlled values are bound through prepare(). Direct
+        // queries are required because there is no WC API for this
+        // aggregate; the result is cached upstream in a 60-second
+        // transient by the caller (DashboardWidget::probeHealth /
+        // self::HEALTH_CACHE_KEY) so wp_cache_* is not the right cache
+        // surface here.
         $hposTable = $wpdb->prefix . 'wc_orders';
         $hposMeta = $wpdb->prefix . 'wc_orders_meta';
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching
         $exists = $wpdb->get_var($wpdb->prepare(
             'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = %s',
             $hposTable,
         ));
         if ((int) $exists === 1) {
-            $sql = $wpdb->prepare(
+            // phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter
+            return (int) $wpdb->get_var($wpdb->prepare(
                 "SELECT COUNT(DISTINCT o.id) FROM {$hposTable} o
                  INNER JOIN {$hposMeta} m ON m.order_id = o.id
                  WHERE m.meta_key = %s AND o.date_created_gmt >= %s",
                 OrderTaxBreakdown::META_KEY,
                 $todayStart,
-            );
-            return (int) $wpdb->get_var($sql);
+            ));
+            // phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter
         }
 
         // Legacy CPT fallback.
         $postsTable = $wpdb->prefix . 'posts';
         $metaTable = $wpdb->prefix . 'postmeta';
-        $sql = $wpdb->prepare(
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter
+        $count = (int) $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(DISTINCT p.ID) FROM {$postsTable} p
              INNER JOIN {$metaTable} m ON m.post_id = p.ID
              WHERE p.post_type = 'shop_order'
@@ -245,12 +260,27 @@ final class DashboardWidget
                AND p.post_date_gmt >= %s",
             OrderTaxBreakdown::META_KEY,
             $todayStart,
-        );
-        return (int) $wpdb->get_var($sql);
+        ));
+        // phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter
+        return $count;
     }
 
     private static function settingsUrl(): string
     {
         return admin_url('admin.php?page=wc-settings&tab=tax&section=opensalestax');
+    }
+
+    /**
+     * Log a warning through WC's logger when available; fall back to PHP's
+     * error_log when WC isn't loaded (e.g. unit-test contexts).
+     */
+    private static function logWarning(string $msg): void
+    {
+        if (function_exists('wc_get_logger')) {
+            wc_get_logger()->warning('[opensalestax-woocommerce] ' . $msg, ['source' => 'opensalestax-woocommerce']);
+            return;
+        }
+        // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+        error_log('[opensalestax-woocommerce] ' . $msg);
     }
 }

@@ -1,6 +1,6 @@
 <?php
 
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
 
 declare(strict_types=1);
 
@@ -47,7 +47,7 @@ final class UrlValidator
             return ['code' => self::BAD_FORMAT, 'message' => 'URL is empty.'];
         }
 
-        $parts = parse_url($url);
+        $parts = wp_parse_url($url);
         if ($parts === false) {
             return ['code' => self::BAD_FORMAT, 'message' => 'URL is malformed.'];
         }
