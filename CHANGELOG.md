@@ -6,6 +6,12 @@ Versioning: [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-05-15
+
+### Fixed
+
+- **Plugin URI / Author URI collision in plugin headers.** v0.6.0's bulk-update of the plugin header during the slug rename inadvertently set `Author URI` to the same value as `Plugin URI` (both `https://github.com/ejosterberg/opensalestax-for-woocommerce`). WordPress.org's submission pre-check rejected the upload with *"Your plugin and author URIs are the same."* `Author URI` reverted to `https://github.com/ejosterberg` (the GitHub profile, which is what it was pre-v0.6.0).
+
 ## [0.6.0] — 2026-05-15
 
 ### Changed

@@ -6,7 +6,7 @@ Tested up to: 6.9
 Requires PHP: 8.2
 WC requires at least: 8.2
 WC tested up to: 10.7
-Stable tag: 0.6.0
+Stable tag: 0.6.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -94,6 +94,10 @@ The plugin is filter-only — it doesn't write to `wp_woocommerce_tax_rates`. Lo
 Tax calculations are provided as-is for convenience. The merchant is solely responsible for tax-collection accuracy and remittance to the appropriate jurisdictions. Verify against your state Department of Revenue before remitting.
 
 == Changelog ==
+
+= 0.6.1 — 2026-05-15 =
+
+* **Fixed Plugin URI / Author URI collision.** v0.6.0 inadvertently set `Author URI` to the same value as `Plugin URI` during the slug-rename header sweep; WP-org's submission pre-check rejected the upload. `Author URI` reverted to the GitHub profile `https://github.com/ejosterberg`. No functional changes.
 
 = 0.6.0 — 2026-05-15 =
 
