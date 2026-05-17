@@ -6,6 +6,21 @@ Versioning: [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.6.2] — 2026-05-17
+
+### Changed
+
+- **`Requires Plugins: woocommerce` header added** to declare WooCommerce as a hard dependency. WordPress 6.5+ uses this header to enforce the dependency check at activation time, so WooCommerce-deactivated sites can't accidentally activate this plugin into a broken state. Surfaced by the WordPress.org Plugin Review team's pre-review automation; the team's specific recommendation was to use this header for plugins that extend WooCommerce, which this plugin does.
+- **`Requires at least: 6.5`** (was `6.2`) to match the `Requires Plugins` header introduced in core 6.5.
+
+### Fixed
+
+- **SDK dependency now pinned to a stable release.** The v0.6.0 / v0.6.1 plugin ZIPs bundled `ejosterberg/opensalestax` at `dev-main` (commit `3b23d34`) instead of a stable tag. Root cause: `composer.json` had a leftover `vcs` repositories block declaring the GitHub repo of the SDK, which made Composer prefer the source branch over the stable tags already published on Packagist (`v0.1.0` 2026-05-04, `v0.1.1` 2026-05-15). The `vcs` block has been removed; the SDK constraint is now `^0.1.1` and `composer.lock` resolves to `v0.1.1` from Packagist directly. Surfaced by the WordPress.org Plugin Review team's "Out of Date Libraries" automated check.
+
+### Notes
+
+- No functional / runtime behavior changes in the plugin code itself — `EngineHealthNotice`, `TaxHandler`, `ConnectionTester`, `DashboardWidget` etc. are byte-for-byte identical to v0.6.1. This release only updates the plugin header + the dependency lockfile.
+
 ## [0.6.1] — 2026-05-15
 
 ### Fixed
