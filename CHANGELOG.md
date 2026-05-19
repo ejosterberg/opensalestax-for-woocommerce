@@ -6,6 +6,21 @@ Versioning: [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.6.7] — 2026-05-19
+
+### Fixed
+
+- **CI red on v0.6.5 + v0.6.6: missing blank line after `<?php`** in the
+  main plugin file. When the v0.6.5 release switched to WordPress's
+  canonical single-space plugin header format, the blank line between
+  `<?php` and the opening `/**` PHPDoc comment was inadvertently
+  removed. PHP-CS-Fixer's `blank_line_after_opening_tag` rule (part of
+  the @PSR12 + @PHP82Migration rulesets this project runs) flagged
+  this on every push since v0.6.5, blocking the lint step of CI before
+  PHPStan and PHPUnit could even run. v0.6.7 restores the blank line.
+  This is a CI-only fix — the plugin behaves identically and v0.6.6's
+  WP-org Plugin Check pass remains valid.
+
 ## [0.6.6] — 2026-05-19
 
 ### Fixed
