@@ -6,6 +6,21 @@ Versioning: [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.6.4] — 2026-05-19
+
+### Fixed
+
+- **`readme.txt` Stable tag synchronized with main plugin file Version.**
+  v0.6.2 and v0.6.3 both shipped with `Stable tag: 0.6.1` in `readme.txt`
+  while the main plugin header carried the newer Version number. The
+  WordPress.org Plugin Check tool's automated scan correctly flagged this
+  as a `stable_tag_mismatch` and blocked v0.6.2 from re-entering the
+  review queue. The plugin file's Version header was being bumped at
+  release time but the parallel `readme.txt` `Stable tag` field was being
+  left stale — a release-process oversight. Both fields are now updated
+  in lockstep going forward. No code changes; this is a metadata-only
+  release whose sole purpose is to land a WP-org-acceptable ZIP.
+
 ## [0.6.3] — 2026-05-19
 
 ### Changed
