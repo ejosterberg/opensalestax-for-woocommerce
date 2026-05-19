@@ -6,6 +6,31 @@ Versioning: [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.6.5] — 2026-05-19
+
+### Fixed
+
+- **Plugin header rewritten in WordPress canonical format.** The header
+  block now uses the single-space form (`Plugin Name: Foo`, no column-
+  aligned padding) recommended in the WordPress Plugin Developer
+  Handbook. The previous column-aligned form (e.g.
+  `Plugin Name:       Foo` with 7 spaces of padding) is technically
+  valid per WordPress core's `get_file_data()` regex but appeared to
+  trip WordPress.org's Plugin Check tool, which reported `Description`,
+  `Version`, and `License` as "missing" even though they were
+  parseable. The new canonical form leaves no ambiguity.
+- **License identifier normalized to SPDX form.** Changed `License:
+  GPLv2 or later` → `License: GPL-2.0-or-later`. Both are recognized
+  by WordPress.org as GPLv2-compatible, but the SPDX identifier is
+  more machine-readable and matches the existing
+  `SPDX-License-Identifier` comment in the same file. `readme.txt`
+  License line updated to match.
+
+### Notes
+
+- No code changes; metadata-only release whose sole purpose is to
+  pass WordPress.org Plugin Check unambiguously.
+
 ## [0.6.4] — 2026-05-19
 
 ### Fixed

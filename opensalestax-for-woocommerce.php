@@ -1,20 +1,19 @@
 <?php
-
 /**
- * Plugin Name:       OpenSalesTax for WooCommerce
- * Plugin URI:        https://github.com/ejosterberg/opensalestax-for-woocommerce
- * Description:       Calculate US sales tax via a self-hosted OpenSalesTax engine. Replaces TaxJar / Avalara / WooCommerce Tax integrations with a free, open-source alternative.
- * Version:           0.6.4
+ * Plugin Name: OpenSalesTax for WooCommerce
+ * Plugin URI: https://github.com/ejosterberg/opensalestax-for-woocommerce
+ * Description: Calculate US sales tax via a self-hosted OpenSalesTax engine. Replaces TaxJar / Avalara / WooCommerce Tax integrations with a free, open-source alternative.
+ * Version: 0.6.5
  * Requires at least: 6.5
- * Requires PHP:      8.2
- * Requires Plugins:  woocommerce
- * Author:            Eric Osterberg
- * Author URI:        https://github.com/ejosterberg
- * License:           GPLv2 or later
- * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain:       opensalestax-for-woocommerce
+ * Requires PHP: 8.2
+ * Requires Plugins: woocommerce
+ * Author: Eric Osterberg
+ * Author URI: https://github.com/ejosterberg
+ * License: GPL-2.0-or-later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
+ * Text Domain: opensalestax-for-woocommerce
  * WC requires at least: 8.2
- * WC tested up to:   10.7
+ * WC tested up to: 10.7
  *
  * SPDX-License-Identifier: Apache-2.0 OR GPL-2.0-or-later
  */
