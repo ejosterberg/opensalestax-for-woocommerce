@@ -6,6 +6,27 @@ Versioning: [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-05-19
+
+### Fixed
+
+- **`readme.txt` Stable tag synced to `0.7.1`** to match the main
+  plugin file. v0.7.0 shipped with `readme.txt` still at
+  `Stable tag: 0.6.7` — the same release-process oversight the
+  captain documented under `portfolio/policy.md` "Pre-tag
+  version-sync guard" after the v0.6.4 saga. Captain's standing
+  guard check (`grep "Stable tag:" readme.txt` == main file's
+  `Version:`) was not run before the v0.7.0 tag. Pre-tag check
+  reflex needs to be wired in tighter for subagent rollouts
+  going forward.
+
+### Notes
+
+- No code changes vs v0.7.0; metadata-only release whose sole
+  purpose is to land a WP-org-acceptable ZIP. v0.7.0's CP-9
+  first-class-shipping feature in `TaxHandler::calcTax()` is
+  bit-identical to v0.7.1's.
+
 ## [0.7.0] — 2026-05-19
 
 ### Added
