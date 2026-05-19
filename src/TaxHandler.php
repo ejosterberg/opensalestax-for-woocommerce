@@ -9,6 +9,7 @@ namespace OpenSalesTax\WooCommerce;
 use OpenSalesTax\Address;
 use OpenSalesTax\Exceptions\OpenSalesTaxException;
 use OpenSalesTax\LineItem;
+use OpenSalesTax\Shipping;
 
 defined('ABSPATH') || exit;
 
@@ -85,8 +86,14 @@ final class TaxHandler
             return [];
         }
 
+        // CP-9 / SDK v0.3.0: detect whether this filter call is for a shipping
+        // line (vs. an item line) by inspecting the rates rows. WC sets
+        // `tax_rate_shipping = 1` on rate rows that apply to shipping; when
+        // ALL passed rows have that flag, this is a shipping call.
+        $isShippingCall = self::isShippingRateContext(is_array($rates) ? $rates : []);
+
         $cents = (int) round($price * 100);
-        $payloadKey = $zip5 . '|' . $category . '|' . $cents;
+        $payloadKey = $zip5 . '|' . $category . '|' . $cents . ($isShippingCall ? '|ship' : '');
 
         $cached = $this->cache->get($payloadKey);
         if ($cached !== null) {
@@ -111,15 +118,35 @@ final class TaxHandler
 
         $startMs = (int) (microtime(true) * 1000);
         try {
-            $result = $client->calculate(
-                address: new Address(zip5: $zip5),
-                lineItems: [
-                    new LineItem(
+            // CP-9: for a shipping-line call, send an empty line_items list
+            // with shipping in the top-level shipping field so the engine
+            // applies per-state shipping-taxability rules (MN, MO/VA, MD).
+            // For item lines, the existing single-line shape is unchanged.
+            if ($isShippingCall) {
+                $result = $client->calculate(
+                    address: new Address(zip5: $zip5),
+                    lineItems: [
+                        // Send a $0 placeholder item so the engine accepts the
+                        // calculate call. The engine ignores zero-amount lines
+                        // for tax purposes but needs at least one entry.
+                        new LineItem(amount: '0.00', category: 'general'),
+                    ],
+                    shipping: new Shipping(
                         amount: number_format($price, 2, '.', ''),
-                        category: $category,
+                        separatelyStated: true,
                     ),
-                ],
-            );
+                );
+            } else {
+                $result = $client->calculate(
+                    address: new Address(zip5: $zip5),
+                    lineItems: [
+                        new LineItem(
+                            amount: number_format($price, 2, '.', ''),
+                            category: $category,
+                        ),
+                    ],
+                );
+            }
         } catch (OpenSalesTaxException $e) {
             self::logWarning('calculate failed: ' . $e->getMessage());
             CalculationLog::record(
@@ -146,7 +173,15 @@ final class TaxHandler
             return $this->fallbackOnError();
         }
 
-        $taxTotal = (float) $result->taxTotal;
+        // For shipping calls, pull the engine's first-class shipping tax
+        // (engine v0.59.0+). When the response has no shipping field (older
+        // engine), shipping tax falls back to 0 — merchants on older
+        // engines see no shipping tax.
+        if ($isShippingCall) {
+            $taxTotal = $result->shipping !== null ? (float) $result->shipping->taxAmount : 0.0;
+        } else {
+            $taxTotal = (float) $result->taxTotal;
+        }
         $rateKey = $this->resolveRateKey();
         $out = [$rateKey => $taxTotal];
         $this->cache->set($payloadKey, $out);
@@ -315,6 +350,35 @@ final class TaxHandler
         /** @var mixed $val */
         $val = $customer->{$method}();
         return is_string($val) ? $val : '';
+    }
+
+    /**
+     * Detect whether the `woocommerce_calc_tax` filter call is for a
+     * shipping line. WooCommerce sets `tax_rate_shipping = 1` on rate
+     * rows that apply to shipping (via `WC_Tax::find_shipping_rates()`).
+     * When every passed rate row carries that flag, the filter call is
+     * shipping; otherwise it's an item line.
+     *
+     * Empty `$rates` (no rate rows at all) is treated as an item line —
+     * safer default for a degenerate WC state where no rates matched.
+     *
+     * @param array<int, array<string, mixed>> $rates
+     */
+    private static function isShippingRateContext(array $rates): bool
+    {
+        if ($rates === []) {
+            return false;
+        }
+        foreach ($rates as $row) {
+            if (!is_array($row)) {
+                return false;
+            }
+            $flag = $row['tax_rate_shipping'] ?? null;
+            if (!in_array($flag, [1, '1', true], true)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

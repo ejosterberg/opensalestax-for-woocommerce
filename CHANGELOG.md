@@ -6,6 +6,40 @@ Versioning: [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-05-19
+
+### Added
+
+- **CP-9 first-class shipping support.** `TaxHandler::calcTax()` now
+  detects when WooCommerce's `woocommerce_calc_tax` filter is being
+  called for a shipping line (by inspecting `tax_rate_shipping = 1`
+  on the passed rate rows) and routes the request through the SDK's
+  new first-class shipping field instead of treating shipping as a
+  regular line item. The engine applies per-state shipping-taxability
+  rules (MN "tax-if-items-taxable", MO/VA "separately-stated", MD
+  "shipping-vs-handling") so WooCommerce merchants get correct
+  shipping tax across the 50 states without per-state configuration.
+  Cache key includes a `ship` suffix so item and shipping calls at
+  the same ZIP + amount don't collide.
+
+### Changed
+
+- **Bumps `ejosterberg/opensalestax` constraint from `^0.2.0` to
+  `^0.3.0`.** Picks up the new third arg on `Client::calculate(addr,
+  lines, shipping?)` plus the `CalculateResponse::$shipping` and
+  `$coverageWarning` response fields. Backward compatible — item-
+  line calls behave identically to v0.6.7.
+
+### Notes
+
+- Engine v0.59.0+ required for the engine to honor shipping. Older
+  engines return `null` shipping; WooCommerce sees 0 shipping tax in
+  that case. Upgrade the engine to v0.59.0 to pick up shipping tax.
+- The implementation sends a `$0.00 general` placeholder line item
+  alongside the shipping segment so the engine accepts the call
+  (POST /v1/calculate requires line_items to be present).
+- Out-of-nexus shipping calls return 0 tax the same way item calls do.
+
 ## [0.6.7] — 2026-05-19
 
 ### Fixed
