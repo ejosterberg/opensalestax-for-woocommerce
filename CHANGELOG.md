@@ -6,6 +6,34 @@ Versioning: [SemVer](https://semver.org).
 
 ## [Unreleased]
 
+## [0.6.6] — 2026-05-19
+
+### Fixed
+
+- **WP-org-distributable ZIP rebuilt with Linux `zip` tooling.** The
+  v0.6.4 and v0.6.5 ZIPs were built using PowerShell's
+  `Compress-Archive`, which does NOT preserve POSIX directory execute
+  bits when the archive is extracted on Linux. Specifically,
+  `vendor/ralouphie/` arrived on Linux with mode `644` (no `x`),
+  making the directory non-traversable — so PHP's autoloader could not
+  `require_once` files beneath it, the plugin PHP-fatal'd on load, and
+  WordPress could not extract the plugin's headers (causing Plugin
+  Check to spuriously report `Description`, `Version`, and `License`
+  as "missing"). v0.6.6's ZIP is built with Linux `zip` and
+  `chmod 755` on all directories, restoring traversability. Captain
+  policy updated: WP-org plugin ZIPs are now built on Linux only.
+- **`readme.txt` `Requires at least` synced to `6.5`** to match the
+  main plugin file. The `Requires Plugins:` header used elsewhere is
+  a WordPress 6.5 feature, so 6.5 is the correct minimum. v0.6.4 and
+  v0.6.5 had `readme.txt` at `6.2` while the main file had `6.5`,
+  which Plugin Check correctly flagged as
+  `readme_mismatched_header_requires` once the autoloader bug above
+  was worked around.
+
+### Notes
+
+- No code changes; metadata + packaging-only release.
+
 ## [0.6.5] — 2026-05-19
 
 ### Fixed
